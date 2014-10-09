@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# coding: utf8
 {
 '!langcode!': 'zh-tw',
 '!langname!': '台灣中文',

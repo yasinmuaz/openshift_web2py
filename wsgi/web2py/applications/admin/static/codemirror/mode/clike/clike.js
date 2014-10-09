@@ -158,8 +158,7 @@ CodeMirror.defineMode("clike", function(config, parserConfig) {
     electricChars: "{}",
     blockCommentStart: "/*",
     blockCommentEnd: "*/",
-    lineComment: "//",
-    fold: "brace"
+    lineComment: "//"
   };
 });
 

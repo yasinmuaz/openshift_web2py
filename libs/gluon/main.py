@@ -2,16 +2,20 @@
 # -*- coding: utf-8 -*-
 
 """
-| This file is part of the web2py Web Framework
-| Copyrighted by Massimo Di Pierro <mdipierro@cs.depaul.edu>
-| License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
+This file is part of the web2py Web Framework
+Copyrighted by Massimo Di Pierro <mdipierro@cs.depaul.edu>
+License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
 
-The gluon wsgi application
----------------------------
+Contains:
+
+- wsgibase: the gluon wsgi application
+
 """
 
 if False: import import_all # DO NOT REMOVE PART OF FREEZE PROCESS
 import gc
+import cgi
+import cStringIO
 import Cookie
 import os
 import re
@@ -21,10 +25,10 @@ import time
 import datetime
 import signal
 import socket
+import tempfile
 import random
-import urllib2
 import string
-
+import urllib2
 
 try:
     import simplejson as sj #external installed library
@@ -32,15 +36,14 @@ except:
     try:
         import json as sj #standard installed library
     except:
-        import gluon.contrib.simplejson as sj #pure python library
+        import contrib.simplejson as sj #pure python library
 
 from thread import allocate_lock
 
-from gluon.fileutils import abspath, write_file
-from gluon.settings import global_settings
-from gluon.utils import web2py_uuid
-from gluon.admin import add_path_first, create_missing_folders, create_missing_app_folders
-from gluon.globals import current
+from fileutils import abspath, write_file, parse_version, copystream
+from settings import global_settings
+from admin import add_path_first, create_missing_folders, create_missing_app_folders
+from globals import current
 
 #  Remarks:
 #  calling script has inserted path to script directory into sys.path
@@ -87,19 +90,21 @@ else:
     logging.basicConfig()
 logger = logging.getLogger("web2py")
 
-from gluon.restricted import RestrictedError
-from gluon.http import HTTP, redirect
-from gluon.globals import Request, Response, Session
-from gluon.compileapp import build_environment, run_models_in, \
+from restricted import RestrictedError
+from http import HTTP, redirect
+from globals import Request, Response, Session
+from compileapp import build_environment, run_models_in, \
     run_controller_in, run_view_in
-from gluon.contenttype import contenttype
-from gluon.dal import BaseAdapter
-from gluon.validators import CRYPT
-from gluon.html import URL, xmlescape
-from gluon.utils import is_valid_ip_address, getipaddrinfo
-from gluon.rewrite import load as load_routes, url_in, THREAD_LOCAL as rwthread, \
+from contenttype import contenttype
+from dal import BaseAdapter
+from settings import global_settings
+from validators import CRYPT
+from cache import CacheInRam
+from html import URL, xmlescape
+from utils import is_valid_ip_address, getipaddrinfo
+from rewrite import load, url_in, THREAD_LOCAL as rwthread, \
     try_rewrite_on_error, fixup_missing_path_info
-from gluon import newcron
+import newcron
 
 __all__ = ['wsgibase', 'save_password', 'appfactory', 'HttpServer']
 
@@ -121,28 +126,27 @@ except:
     raise RuntimeError("Cannot determine web2py version")
 
 try:
-    from gluon import rocket
+    import rocket
 except:
     if not global_settings.web2py_runtime_gae:
         logger.warn('unable to import Rocket')
 
-load_routes()
+load()
 
 HTTPS_SCHEMES = set(('https', 'HTTPS'))
 
 
 def get_client(env):
     """
-    Guesses the client address from the environment variables
+    guess the client address from the environment variables
 
-    First tries 'http_x_forwarded_for', secondly 'remote_addr'
+    first tries 'http_x_forwarded_for', secondly 'remote_addr'
     if all fails, assume '127.0.0.1' or '::1' (running locally)
     """
-    eget = env.get
-    g = regex_client.search(eget('http_x_forwarded_for', ''))
+    g = regex_client.search(env.get('http_x_forwarded_for', ''))
     client = (g.group() or '').split(',')[0] if g else None
     if client in (None, '', 'unknown'):
-        g = regex_client.search(eget('remote_addr', ''))
+        g = regex_client.search(env.get('remote_addr', ''))
         if g:
             client = g.group()
         elif env.http_host.startswith('['):  # IPv6
@@ -154,11 +158,56 @@ def get_client(env):
     return client
 
 
+def copystream_progress(request, chunk_size=10 ** 5):
+    """
+    copies request.env.wsgi_input into request.body
+    and stores progress upload status in cache_ram
+    X-Progress-ID:length and X-Progress-ID:uploaded
+    """
+    env = request.env
+    if not env.content_length:
+        return cStringIO.StringIO()
+    source = env.wsgi_input
+    try:
+        size = int(env.content_length)
+    except ValueError:
+        raise HTTP(400, "Invalid Content-Length header")
+    try: # Android requires this
+        dest = tempfile.NamedTemporaryFile()
+    except NotImplementedError: # and GAE this
+        dest = tempfile.TemporaryFile()
+    if not 'X-Progress-ID' in request.vars:
+        copystream(source, dest, size, chunk_size)
+        return dest
+    cache_key = 'X-Progress-ID:' + request.vars['X-Progress-ID']
+    cache_ram = CacheInRam(request)  # same as cache.ram because meta_storage
+    cache_ram(cache_key + ':length', lambda: size, 0)
+    cache_ram(cache_key + ':uploaded', lambda: 0, 0)
+    while size > 0:
+        if size < chunk_size:
+            data = source.read(size)
+            cache_ram.increment(cache_key + ':uploaded', size)
+        else:
+            data = source.read(chunk_size)
+            cache_ram.increment(cache_key + ':uploaded', chunk_size)
+        length = len(data)
+        if length > size:
+            (data, length) = (data[:size], size)
+        size -= length
+        if length == 0:
+            break
+        dest.write(data)
+        if length < chunk_size:
+            break
+    dest.seek(0)
+    cache_ram(cache_key + ':length', None)
+    cache_ram(cache_key + ':uploaded', None)
+    return dest
 
 
 def serve_controller(request, response, session):
     """
-    This function is used to generate a dynamic page.
+    this function is used to generate a dynamic page.
     It first runs all models, then runs the function in the controller,
     and then tries to render the output using a view/template.
     this function must run from the [application] folder.
@@ -232,46 +281,135 @@ class LazyWSGI(object):
         return self._environ
     def start_response(self,status='200', headers=[], exec_info=None):
         """
-        in controller you can use:
-
+        in controller you can use::
+        
         - request.wsgi.environ
         - request.wsgi.start_response
-
+        
         to call third party WSGI applications
         """
         self.response.status = str(status).split(' ', 1)[0]
         self.response.headers = dict(headers)
         return lambda *args, **kargs: \
             self.response.write(escape=False, *args, **kargs)
-    def middleware(self,*middleware_apps):
+    def middleware(self,*a):
         """
         In you controller use::
-
-            @request.wsgi.middleware(middleware1, middleware2, ...)
-
+        
+        @request.wsgi.middleware(middleware1, middleware2, ...)
+        
         to decorate actions with WSGI middleware. actions must return strings.
         uses a simulated environment so it may have weird behavior in some cases
         """
         def middleware(f):
             def app(environ, start_response):
                 data = f()
-                start_response(self.response.status,
+                start_response(self.response.status, 
                                self.response.headers.items())
                 if isinstance(data, list):
                     return data
                 return [data]
             for item in middleware_apps:
                 app = item(app)
-            def caller(app):
+            def caller(app):                
                 return app(self.environ, self.start_response)
             return lambda caller=caller, app=app: caller(app)
         return middleware
 
+ISLE25 = sys.version_info[1] <= 5
+
+def parse_get_post_vars(request, environ):
+
+    # always parse variables in URL for GET, POST, PUT, DELETE, etc. in get_vars
+    env = request.env
+    dget = cgi.parse_qsl(env.query_string or '', keep_blank_values=1)
+    for (key, value) in dget:
+        if key in request.get_vars:
+            if isinstance(request.get_vars[key], list):
+                request.get_vars[key] += [value]
+            else:
+                request.get_vars[key] = [request.get_vars[key]] + [value]
+        else:
+            request.get_vars[key] = value
+        request.vars[key] = request.get_vars[key]
+
+
+    try:
+        request.body = body = copystream_progress(request)
+    except IOError:
+        raise HTTP(400, "Bad Request - HTTP body is incomplete")
+
+    #if content-type is application/json, we must read the body
+    is_json = env.get('http_content_type', '')[:16] == 'application/json'
+
+
+    if is_json:
+        try:
+            json_vars = sj.load(body)
+            body.seek(0)
+        except:
+            # incoherent request bodies can still be parsed "ad-hoc"
+            json_vars = {}
+            pass
+        # update vars and get_vars with what was posted as json
+        if isinstance(json_vars,dict):
+            request.get_vars.update(json_vars)
+            request.vars.update(json_vars)
+
+
+    # parse POST variables on POST, PUT, BOTH only in post_vars
+    if (body and env.request_method in ('POST', 'PUT', 'DELETE', 'BOTH')):
+        dpost = cgi.FieldStorage(fp=body, environ=environ, keep_blank_values=1)
+        # The same detection used by FieldStorage to detect multipart POSTs
+        is_multipart = dpost.type[:10] == 'multipart/'
+        body.seek(0)
+
+
+        def listify(a):
+            return (not isinstance(a, list) and [a]) or a
+        try:
+            keys = sorted(dpost)
+        except TypeError:
+            keys = []
+        for key in keys:
+            if key is None:
+                continue  # not sure why cgi.FieldStorage returns None key
+            dpk = dpost[key]
+            # if en element is not a file replace it with its value else leave it alone
+            if isinstance(dpk, list):
+                value = []
+                for _dpk in dpk:
+                    if not _dpk.filename:
+                        value.append(_dpk.value)
+                    else:
+                        value.append(_dpk)
+            elif not dpk.filename:
+                value = dpk.value
+            else:
+                value = dpk
+            pvalue = listify(value)
+            if key in request.vars:
+                gvalue = listify(request.vars[key])
+                if ISLE25:
+                    value = pvalue + gvalue
+                elif is_multipart:
+                    pvalue = pvalue[len(gvalue):]
+                else:
+                    pvalue = pvalue[:-len(gvalue)]
+            request.vars[key] = value
+            if len(pvalue):
+                request.post_vars[key] = (len(pvalue) >
+                                          1 and pvalue) or pvalue[0]
+        if is_json and isinstance(json_vars,dict):
+            # update post_vars with what was posted as json
+            request.post_vars.update(json_vars)
+
+
 def wsgibase(environ, responder):
     """
-    The gluon wsgi application. The first function called when a page
-    is requested (static or dynamic). It can be called by paste.httpserver
-    or by apache mod_wsgi (or any WSGI-compatible server).
+    this is the gluon wsgi application. the first function called when a page
+    is requested (static or dynamic). it can be called by paste.httpserver
+    or by apache mod_wsgi.
 
       - fills request with info
       - the environment variables, replacing '.' with '_'
@@ -288,22 +426,24 @@ def wsgibase(environ, responder):
     2. for dynamic pages:
 
       - /<application>[/<controller>[/<function>[/<sub>]]][.<extension>]
+      - (sub may go several levels deep, currently 3 levels are supported:
+         sub1/sub2/sub3)
 
     The naming conventions are:
 
       - application, controller, function and extension may only contain
-        `[a-zA-Z0-9_]`
+        [a-zA-Z0-9_]
       - file and sub may also contain '-', '=', '.' and '/'
     """
-    eget = environ.get
+
     current.__dict__.clear()
-    request = Request(environ)
+    request = Request()
     response = Response()
     session = Session()
     env = request.env
-    #env.web2py_path = global_settings.applications_parent
+    env.web2py_path = global_settings.applications_parent
     env.web2py_version = web2py_version
-    #env.update(global_settings)
+    env.update(global_settings)
     static_file = False
     try:
         try:
@@ -322,7 +462,8 @@ def wsgibase(environ, responder):
                 response.status = env.web2py_status_code or response.status
 
                 if static_file:
-                    if eget('QUERY_STRING', '').startswith('attachment'):
+                    if environ.get('QUERY_STRING', '').startswith(
+                            'attachment'):
                         response.headers['Content-Disposition'] \
                             = 'attachment'
                     if version:
@@ -330,7 +471,6 @@ def wsgibase(environ, responder):
                         response.headers[
                             'Expires'] = 'Thu, 31 Dec 2037 23:59:59 GMT'
                     response.stream(static_file, request=request)
-
 
                 # ##################################################
                 # fill in request items
@@ -345,7 +485,7 @@ def wsgibase(environ, responder):
                             local_hosts.add(socket.gethostname())
                             local_hosts.add(fqdn)
                             local_hosts.update([
-                                addrinfo[4][0] for addrinfo
+                                addrinfo[4][0] for addrinfo 
                                 in getipaddrinfo(fqdn)])
                             if env.server_name:
                                 local_hosts.add(env.server_name)
@@ -359,21 +499,16 @@ def wsgibase(environ, responder):
                     local_hosts = global_settings.local_hosts
                 client = get_client(env)
                 x_req_with = str(env.http_x_requested_with).lower()
-                cmd_opts = request.global_settings.cmd_options
 
                 request.update(
                     client = client,
                     folder = abspath('applications', app) + os.sep,
                     ajax = x_req_with == 'xmlhttprequest',
-                    cid = env.http_web2py_component_element,                    
-                    is_local = (env.remote_addr in local_hosts and 
-                                client == env.remote_addr),
-                    is_shell = cmd_opts and cmd_opts.shell,
-                    is_sheduler = cmd_opts and cmd_opts.scheduler,
+                    cid = env.http_web2py_component_element,
+                    is_local = env.remote_addr in local_hosts,
                     is_https = env.wsgi_url_scheme in HTTPS_SCHEMES or \
                         request.env.http_x_forwarded_proto in HTTPS_SCHEMES \
-                        or env.https == 'on'
-                    )
+                        or env.https == 'on')
                 request.compute_uuid()  # requires client
                 request.url = environ['PATH_INFO']
 
@@ -381,7 +516,6 @@ def wsgibase(environ, responder):
                 # access the requested application
                 # ##################################################
 
-                disabled = pjoin(request.folder, 'DISABLED')
                 if not exists(request.folder):
                     if app == rwthread.routes.default_application \
                             and app != 'welcome':
@@ -396,7 +530,8 @@ def wsgibase(environ, responder):
                         raise HTTP(404, rwthread.routes.error_message
                                    % 'invalid request',
                                    web2py_error='invalid application')
-                elif not request.is_local and exists(disabled):
+                elif not request.is_local and \
+                        exists(pjoin(request.folder, 'DISABLED')):
                     raise HTTP(503, "<html><body><h1>Temporarily down for maintenance</h1></body></html>")
 
                 # ##################################################
@@ -409,7 +544,7 @@ def wsgibase(environ, responder):
                 # get the GET and POST data
                 # ##################################################
 
-                #parse_get_post_vars(request, environ)
+                parse_get_post_vars(request, environ)
 
                 # ##################################################
                 # expose wsgi hooks for convenience
@@ -453,52 +588,50 @@ def wsgibase(environ, responder):
                 if request.body:
                     request.body.close()
 
-                if hasattr(current,'request'):
+                # ##################################################
+                # on success, try store session in database
+                # ##################################################
+                session._try_store_in_db(request, response)
 
-                    # ##################################################
-                    # on success, try store session in database
-                    # ##################################################
-                    session._try_store_in_db(request, response)
+                # ##################################################
+                # on success, commit database
+                # ##################################################
 
-                    # ##################################################
-                    # on success, commit database
-                    # ##################################################
+                if response.do_not_commit is True:
+                    BaseAdapter.close_all_instances(None)
+                # elif response._custom_commit:
+                #     response._custom_commit()
+                elif response.custom_commit:
+                    BaseAdapter.close_all_instances(response.custom_commit)
+                else:
+                    BaseAdapter.close_all_instances('commit')
 
-                    if response.do_not_commit is True:
-                        BaseAdapter.close_all_instances(None)
-                    elif response.custom_commit:
-                        BaseAdapter.close_all_instances(response.custom_commit)
-                    else:
-                        BaseAdapter.close_all_instances('commit')
+                # ##################################################
+                # if session not in db try store session on filesystem
+                # this must be done after trying to commit database!
+                # ##################################################
 
-                    # ##################################################
-                    # if session not in db try store session on filesystem
-                    # this must be done after trying to commit database!
-                    # ##################################################
+                session._try_store_in_cookie_or_file(request, response)
 
-                    session._try_store_in_cookie_or_file(request, response)
+                if request.cid:
+                    if response.flash:
+                        http_response.headers['web2py-component-flash'] = \
+                            urllib2.quote(xmlescape(response.flash)\
+                                              .replace('\n',''))
+                    if response.js:
+                        http_response.headers['web2py-component-command'] = \
+                            urllib2.quote(response.js.replace('\n',''))
 
-                    # Set header so client can distinguish component requests.
-                    if request.cid:
-                        http_response.headers.setdefault(
-                            'web2py-component-content', 'replace')
+                # ##################################################
+                # store cookies in headers
+                # ##################################################
 
-                    if request.ajax:
-                        if response.flash:
-                            http_response.headers['web2py-component-flash'] = \
-                                urllib2.quote(xmlescape(response.flash)\
-                                                  .replace('\n',''))
-                        if response.js:
-                            http_response.headers['web2py-component-command'] = \
-                                urllib2.quote(response.js.replace('\n',''))
-
-                    # ##################################################
-                    # store cookies in headers
-                    # ##################################################
-
-                    session._fixup_before_save()
-                    http_response.cookies2headers(response.cookies)
-
+                rcookies = response.cookies
+                if session._forget and response.session_id_name in rcookies:
+                    del rcookies[response.session_id_name]
+                elif session._secure:
+                    rcookies[response.session_id_name]['secure'] = True
+                http_response.cookies2headers(rcookies)
                 ticket = None
 
             except RestrictedError, e:
@@ -510,17 +643,11 @@ def wsgibase(environ, responder):
                 # on application error, rollback database
                 # ##################################################
 
-                # log tickets before rollback if not in DB
-                if not request.tickets_db:
-                    ticket = e.log(request) or 'unknown'
-                # rollback
+                ticket = e.log(request) or 'unknown'
                 if response._custom_rollback:
                     response._custom_rollback()
                 else:
                     BaseAdapter.close_all_instances('rollback')
-                # if tickets in db, reconnect and store it in db
-                if request.tickets_db:
-                    ticket = e.log(request) or 'unknown'
 
                 http_response = \
                     HTTP(500, rwthread.routes.error_message_ticket %
@@ -567,14 +694,14 @@ def wsgibase(environ, responder):
 
 def save_password(password, port):
     """
-    Used by main() to save the password in the parameters_port.py file.
+    used by main() to save the password in the parameters_port.py file.
     """
 
     password_file = abspath('parameters_%i.py' % port)
     if password == '<random>':
         # make up a new password
         chars = string.letters + string.digits
-        password = ''.join([random.choice(chars) for _ in range(8)])
+        password = ''.join([random.choice(chars) for i in range(8)])
         cpassword = CRYPT()(password)[0]
         print '******************* IMPORTANT!!! ************************'
         print 'your admin password is "%s"' % password
@@ -601,35 +728,20 @@ def save_password(password, port):
 
 def appfactory(wsgiapp=wsgibase,
                logfilename='httpserver.log',
-               profiler_dir=None,
-               profilerfilename=None):
+               profilerfilename='profiler.log'):
     """
     generates a wsgi application that does logging and profiling and calls
     wsgibase
 
-    Args:
-        wsgiapp: the base application
-        logfilename: where to store apache-compatible requests log
-        profiler_dir: where to store profile files
+    .. function:: gluon.main.appfactory(
+            [wsgiapp=wsgibase
+            [, logfilename='httpserver.log'
+            [, profilerfilename='profiler.log']]])
 
     """
-    if profilerfilename is not None:
-        raise BaseException("Deprecated API")
-    if profiler_dir:
-        profiler_dir = abspath(profiler_dir)
-        logger.warn('profiler is on. will use dir %s', profiler_dir)
-        if not os.path.isdir(profiler_dir):
-            try:
-                os.makedirs(profiler_dir)
-            except:
-                raise BaseException("Can't create dir %s" % profiler_dir)
-        filepath = pjoin(profiler_dir, 'wtest')
-        try:
-            filehandle = open( filepath, 'w' )
-            filehandle.close()
-            os.unlink(filepath)
-        except IOError:
-            raise BaseException("Unable to write to dir %s" % profiler_dir)
+    if profilerfilename and exists(profilerfilename):
+        os.unlink(profilerfilename)
+    locker = allocate_lock()
 
     def app_with_logging(environ, responder):
         """
@@ -647,17 +759,25 @@ def appfactory(wsgiapp=wsgibase,
 
         time_in = time.time()
         ret = [0]
-        if not profiler_dir:
+        if not profilerfilename:
             ret[0] = wsgiapp(environ, responder2)
         else:
             import cProfile
-            prof = cProfile.Profile()
-            prof.enable()
-            ret[0] = wsgiapp(environ, responder2)
-            prof.disable()
-            destfile = pjoin(profiler_dir, "req_%s.prof" % web2py_uuid())
-            prof.dump_stats(destfile)
+            import pstats
+            logger.warn('profiler is on. this makes web2py slower and serial')
 
+            locker.acquire()
+            cProfile.runctx('ret[0] = wsgiapp(environ, responder2)',
+                            globals(), locals(), profilerfilename + '.tmp')
+            stat = pstats.Stats(profilerfilename + '.tmp')
+            stat.stream = cStringIO.StringIO()
+            stat.strip_dirs().sort_stats("time").print_stats(80)
+            profile_out = stat.stream.getvalue()
+            profile_file = open(profilerfilename, 'a')
+            profile_file.write('%s\n%s\n%s\n%s\n\n' %
+                               ('=' * 60, environ['PATH_INFO'], '=' * 60, profile_out))
+            profile_file.close()
+            locker.release()
         try:
             line = '%s, %s, %s, %s, %s, %s, %f\n' % (
                 environ['REMOTE_ADDR'],
@@ -680,6 +800,7 @@ def appfactory(wsgiapp=wsgibase,
 
     return app_with_logging
 
+
 class HttpServer(object):
     """
     the web2py web server (Rocket)
@@ -692,7 +813,7 @@ class HttpServer(object):
         password='',
         pid_filename='httpserver.pid',
         log_filename='httpserver.log',
-        profiler_dir=None,
+        profiler_filename=None,
         ssl_certificate=None,
         ssl_private_key=None,
         ssl_ca_certificate=None,
@@ -729,9 +850,7 @@ class HttpServer(object):
             web2py_path = path
             global_settings.applications_parent = path
             os.chdir(path)
-            load_routes()
-            for p in (path, abspath('site-packages'), ""):
-                add_path_first(p)
+            [add_path_first(p) for p in (path, abspath('site-packages'), "")]
             if exists("logging.conf"):
                 logging.config.fileConfig("logging.conf")
 
@@ -759,7 +878,7 @@ class HttpServer(object):
             logger.info('SSL is ON')
         app_info = {'wsgi_app': appfactory(wsgibase,
                                            log_filename,
-                                           profiler_dir)}
+                                           profiler_filename)}
 
         self.server = rocket.Rocket(interfaces or tuple(sock_list),
                                     method='wsgi',

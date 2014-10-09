@@ -20,21 +20,9 @@ Typical usage:
 
     # Delete all sessions regardless of expiry and exit.
     python web2py.py -S app -M -R scripts/sessions2trash.py -A -o -x 0
-    
-    # Delete session in a module (move to the modules folder)
-    from sessions2trash import single_loop
-    def delete_sessions():
-        single_loop()
-    
 """
 
 from __future__ import with_statement
-
-import sys
-import os
-print os.path.join(*__file__.split(os.sep)[:-2] or ['.'])
-sys.path.append(os.path.join(*__file__.split(os.sep)[:-2] or ['.']))
-
 from gluon import current
 from gluon.storage import Storage
 from optparse import OptionParser
@@ -43,7 +31,6 @@ import datetime
 import os
 import stat
 import time
-import glob
 
 EXPIRATION_MINUTES = 60
 SLEEP_MINUTES = 5
@@ -122,8 +109,8 @@ class SessionSetFiles(SessionSet):
 
     def get(self):
         """Return list of SessionFile instances for existing sessions."""
-        root_path = os.path.join(current.request.folder, 'sessions')
-        return [SessionFile(os.path.join(path, x)) for path,dirs,files in os.walk(root_path) for x in files]
+        path = os.path.join(request.folder, 'sessions')
+        return [SessionFile(os.path.join(path, x)) for x in os.listdir(path)]
 
 
 class SessionDb(object):
@@ -162,13 +149,7 @@ class SessionFile(object):
         self.filename = filename
 
     def delete(self):
-        try:
-            os.unlink(self.filename)
-            path = os.path.dirname(filename)
-            if not path.endswith('sessions') and len(os.listdir(path))==0:
-                os.rmdir(path)
-        except:
-            pass
+        os.unlink(self.filename)
 
     def get(self):
         session = Storage()
@@ -193,18 +174,6 @@ def total_seconds(delta):
     """
     return (delta.microseconds + (delta.seconds + (delta.days * 24 * 3600)) *
             10 ** 6) / 10 ** 6
-
-def single_loop(expiration=None, force=False, verbose=False):
-    if expiration is None:
-        try:
-            expiration = auth.settings.expiration
-        except:
-            expiration = EXPIRATION_MINUTES * 60
-
-    set_files = SessionSetFiles(expiration, force, verbose)
-    set_files.trash()
-    set_db = SessionSetDb(expiration, force, verbose)
-    set_db.trash()
 
 
 def main():
@@ -237,9 +206,17 @@ def main():
     (options, unused_args) = parser.parse_args()
 
     expiration = options.expiration
+    if expiration is None:
+        try:
+            expiration = auth.settings.expiration
+        except:
+            expiration = EXPIRATION_MINUTES * 60
 
+    set_db = SessionSetDb(expiration, options.force, options.verbose)
+    set_files = SessionSetFiles(expiration, options.force, options.verbose)
     while True:
-        single_loop(expiration, options.force, options.verbose)
+        set_db.trash()
+        set_files.trash()
 
         if options.once:
             break
@@ -248,5 +225,5 @@ def main():
                 print 'Sleeping %s seconds' % (options.sleep)
             time.sleep(options.sleep)
 
-if __name__ == '__main__':
-    main()
+
+main()

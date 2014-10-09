@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# coding: utf8
 {
 '!langcode!': 'ja-jp',
 '!langname!': '日本語',

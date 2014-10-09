@@ -6,17 +6,8 @@
 // overlay wins, unless the combine argument was true, in which case
 // the styles are combined.
 
-(function(mod) {
-  if (typeof exports == "object" && typeof module == "object") // CommonJS
-    mod(require("../../lib/codemirror"));
-  else if (typeof define == "function" && define.amd) // AMD
-    define(["../../lib/codemirror"], mod);
-  else // Plain browser env
-    mod(CodeMirror);
-})(function(CodeMirror) {
-"use strict";
-
-CodeMirror.overlayMode = function(base, overlay, combine) {
+// overlayParser is the old, deprecated name
+CodeMirror.overlayMode = CodeMirror.overlayParser = function(base, overlay, combine) {
   return {
     startState: function() {
       return {
@@ -66,5 +57,3 @@ CodeMirror.overlayMode = function(base, overlay, combine) {
     }
   };
 };
-
-});

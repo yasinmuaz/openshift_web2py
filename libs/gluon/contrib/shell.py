@@ -31,13 +31,12 @@ An interactive, stateful AJAX shell that runs Python code on the server.
 
 import logging
 import new
-try:
-   import cPickle as pickle
-except:
-   import pickle
+import os
+import cPickle
 import sys
 import traceback
 import types
+import wsgiref.handlers
 import StringIO
 import threading
 locker = threading.RLock()
@@ -49,12 +48,12 @@ _DEBUG = True
 _HISTORY_KIND = '_Shell_History'
 
 # Types that can't be pickled.
-UNPICKLABLE_TYPES = [
+UNPICKLABLE_TYPES = (
     types.ModuleType,
     types.TypeType,
     types.ClassType,
     types.FunctionType,
-]
+)
 
 # Unpicklable statements to seed new historys with.
 INITIAL_UNPICKLABLES = [
@@ -101,7 +100,7 @@ class History:
             name: the name of the global to remove
             value: any picklable value
         """
-        blob = pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
+        blob = cPickle.dumps(value)
 
         if name in self.global_names:
             index = self.global_names.index(name)
@@ -160,7 +159,7 @@ def represent(obj):
     code below to determine whether the object changes over time.
     """
     try:
-        return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
+        return cPickle.dumps(obj)
     except:
         return repr(obj)
 
@@ -246,7 +245,7 @@ def run(history, statement, env={}):
             if name not in old_globals or represent(val) != old_globals[name]:
                 new_globals[name] = val
 
-        if True in [isinstance(val, tuple(UNPICKLABLE_TYPES))
+        if True in [isinstance(val, UNPICKLABLE_TYPES)
                     for val in new_globals.values()]:
             # this statement added an unpicklable global. store the statement and
             # the names of all of the globals it added in the unpicklables.
@@ -257,11 +256,7 @@ def run(history, statement, env={}):
             # new globals back into the datastore.
             for name, val in new_globals.items():
                 if not name.startswith('__'):
-                    try:
-                        history.set_global(name, val)
-                    except (TypeError, pickle.PicklingError), ex:
-                        UNPICKLABLE_TYPES.append(type(val))
-                        history.add_unpicklable(statement, new_globals.keys())
+                    history.set_global(name, val)
 
     finally:
         sys.modules['__main__'] = old_main

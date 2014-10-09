@@ -2,12 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-| This file is part of the web2py Web Framework
-| Created by Attila Csipa <web2py@csipa.in.rs>
-| Modified by Massimo Di Pierro <mdipierro@cs.depaul.edu>
-| License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
-
-Cron-style interface
+Created by Attila Csipa <web2py@csipa.in.rs>
+Modified by Massimo Di Pierro <mdipierro@cs.depaul.edu>
 """
 
 import sys
@@ -21,11 +17,8 @@ import datetime
 import platform
 import portalocker
 import fileutils
-try:
-    import cPickle as pickle
-except:
-    import pickle
-from gluon.settings import global_settings
+import cPickle
+from settings import global_settings
 
 logger = logging.getLogger("web2py.cron")
 _cron_stopping = False
@@ -34,7 +27,7 @@ _cron_subprocs = []
 
 def absolute_path_link(path):
     """
-    Returns an absolute path for the destination of a symlink
+    Return an absolute path for the destination of a symlink
 
     """
     if os.path.islink(path):
@@ -47,17 +40,11 @@ def absolute_path_link(path):
 
 
 def stopcron():
-    "Graceful shutdown of cron"
+    "graceful shutdown of cron"
     global _cron_stopping
     _cron_stopping = True
     while _cron_subprocs:
-        proc = _cron_subprocs.pop()
-        if proc.poll() is None:
-            try:
-                proc.terminate()
-            except:
-                import traceback
-                traceback.print_exc()
+        _cron_subprocs.pop().terminate()
 
 class extcron(threading.Thread):
 
@@ -120,7 +107,7 @@ class Token(object):
 
     def acquire(self, startup=False):
         """
-        Returns the time when the lock is acquired or
+        returns the time when the lock is acquired or
         None if cron already running
 
         lock is implemented by writing a pickle (start, stop) in cron.master
@@ -130,10 +117,6 @@ class Token(object):
         if a cron job started before 60 seconds and did not stop,
         a warning is issue "Stale cron.master detected"
         """
-        if sys.platform == 'win32':
-            locktime = 59.5
-        else:
-            locktime = 59.99
         if portalocker.LOCK_EX is None:
             logger.warning('WEB2PY CRON: Disabled because no file locking')
             return None
@@ -142,18 +125,17 @@ class Token(object):
             ret = None
             portalocker.lock(self.master, portalocker.LOCK_EX)
             try:
-                (start, stop) = pickle.load(self.master)
+                (start, stop) = cPickle.load(self.master)
             except:
                 (start, stop) = (0, 1)
-            if startup or self.now - start > locktime:
+            if startup or self.now - start > 59.99:
                 ret = self.now
                 if not stop:
                     # this happens if previous cron job longer than 1 minute
                     logger.warning('WEB2PY CRON: Stale cron.master detected')
                 logger.debug('WEB2PY CRON: Acquiring lock')
                 self.master.seek(0)
-                pickle.dump((self.now, 0), self.master)
-                self.master.flush()
+                cPickle.dump((self.now, 0), self.master)
         finally:
             portalocker.unlock(self.master)
         if not ret:
@@ -163,16 +145,17 @@ class Token(object):
 
     def release(self):
         """
-        Writes into cron.master the time when cron job was completed
+        this function writes into cron.master the time when cron job
+        was completed
         """
         if not self.master.closed:
             portalocker.lock(self.master, portalocker.LOCK_EX)
             logger.debug('WEB2PY CRON: Releasing cron lock')
             self.master.seek(0)
-            (start, stop) = pickle.load(self.master)
+            (start, stop) = cPickle.load(self.master)
             if start == self.now:  # if this is my lock
                 self.master.seek(0)
-                pickle.dump((self.now, time.time()), self.master)
+                cPickle.dump((self.now, time.time()), self.master)
             portalocker.unlock(self.master)
             self.master.close()
 
@@ -263,10 +246,6 @@ class cronlauncher(threading.Thread):
                                 shell=self.shell)
         _cron_subprocs.append(proc)
         (stdoutdata, stderrdata) = proc.communicate()
-        try:
-            _cron_subprocs.remove(proc)
-        except ValueError:
-            pass
         if proc.returncode != 0:
             logger.warning(
                 'WEB2PY CRON Call returned code %s:\n%s' %
@@ -324,16 +303,12 @@ def crondance(applications_parent, ctype='soft', startup=False, apps=None):
         for task in tasks:
             if _cron_stopping:
                 break
-            if sys.executable.lower().endswith('pythonservice.exe'):
-                _python_exe = os.path.join(sys.exec_prefix, 'python.exe')
-            else:
-                _python_exe = sys.executable
-            commands = [_python_exe]
+            commands = [sys.executable]
             w2p_path = fileutils.abspath('web2py.py', gluon=True)
             if os.path.exists(w2p_path):
                 commands.append(w2p_path)
-            if applications_parent != global_settings.gluon_parent:
-                commands.extend(('-f', applications_parent))
+            if global_settings.applications_parent != global_settings.gluon_parent:
+                commands.extend(('-f', global_settings.applications_parent))
             citems = [(k in task and not v in task[k]) for k, v in checks]
             task_min = task.get('min', [])
             if not task:

@@ -1,6 +1,6 @@
 """
 Created by Massimo Di Pierro
-License BSD
+Licese BSD
 """
 
 import subprocess

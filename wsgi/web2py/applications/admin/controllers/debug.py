@@ -54,13 +54,9 @@ def interact():
     filename = web_debugger.filename
     lineno = web_debugger.lineno
     if filename:
-        # prevent IOError 2 on some circuntances (EAFP instead of os.access)
-        try:
-            lines = open(filename).readlines()
-        except:
-            lines = ""
         lines = dict([(i + 1, l) for (i, l) in enumerate(
-            [l.strip("\n").strip("\r") for l in lines])])
+            [l.strip("\n").strip("\r") for l
+             in open(filename).readlines()])])
         filename = os.path.basename(filename)
     else:
         lines = {}
@@ -216,7 +212,7 @@ def toggle_breakpoint():
     except Exception, e:
         session.flash = str(e)
     return response.json({'ok': ok, 'lineno': lineno})
-
+    
 def list_breakpoints():
     "Return a list of linenumbers for current breakpoints"
 
@@ -238,3 +234,4 @@ def list_breakpoints():
         session.flash = str(e)
         ok = False
     return response.json({'ok': ok, 'breakpoints': breakpoints})
+

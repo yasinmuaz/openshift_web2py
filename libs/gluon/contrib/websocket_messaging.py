@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 #!/usr/bin/env python
-
 """
 This file is part of the web2py Web Framework
-Copyrighted by Massimo Di Pierro <mdip...@cs.depaul.edu>
+Copyrighted by Massimo Di Pierro <mdipierro@cs.depaul.edu>
 License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
 
 Attention: Requires Chrome or Safari. For IE of Firefox you need https://github.com/gimite/web-socket-js
 
-1) install tornado (requires Tornado 3.0 or later)
+1) install tornado (requires Tornado 2.1)
 
    easy_install tornado
 
@@ -19,14 +17,13 @@ Attention: Requires Chrome or Safari. For IE of Firefox you need https://github.
 3) from any web2py app you can post messages with
 
    from gluon.contrib.websocket_messaging import websocket_send
-   websocket_send('http://127.0.0.1:8888', 'Hello World', 'mykey', 'mygroup')
+   websocket_send('http://127.0.0.1:8888','Hello World','mykey','mygroup')
 
 4) from any template you can receive them with
 
    <script>
    $(document).ready(function(){
-      if(!$.web2py.web2py_websocket('ws://127.0.0.1:8888/realtime/mygroup', function(e){alert(e.data)}))
-
+      if(!web2py_websocket('ws://127.0.0.1:8888/realtime/mygroup',function(e){alert(e.data)}))
          alert("html5 websocket not supported by your browser, try Google Chrome");
    });
    </script>
@@ -37,7 +34,7 @@ Or if you want to send json messages and store evaluated json in a var called da
    <script>
    $(document).ready(function(){
       var data;
-      $.web2py.web2py_websocket('ws://127.0.0.1:8888/realtime/mygroup', function(e){data=eval('('+e.data+')')});
+      web2py_websocket('ws://127.0.0.1:8888/realtime/mygroup',function(e){data=eval('('+e.data+')')});
    });
    </script>
 
@@ -47,16 +44,14 @@ Or if you want to send json messages and store evaluated json in a var called da
 - "ws://127.0.0.1:8888/realtime/" must be contain the IP of the websocket_messaging server.
 - Via group='mygroup' name you can support multiple groups of clients (think of many chat-rooms)
 
-
 Here is a complete sample web2py action:
 
     def index():
-        form=LOAD('default', 'ajax_form', ajax=True)
+        form=LOAD('default','ajax_form',ajax=True)
         script=SCRIPT('''
             jQuery(document).ready(function(){
               var callback=function(e){alert(e.data)};
-              if(!$.web2py.web2py_websocket('ws://127.0.0.1:8888/realtime/mygroup', callback))
-
+              if(!web2py_websocket('ws://127.0.0.1:8888/realtime/mygroup',callback))
                 alert("html5 websocket not supported by your browser, try Google Chrome");
             });
         ''')
@@ -67,7 +62,7 @@ Here is a complete sample web2py action:
         if form.accepts(request,session):
             from gluon.contrib.websocket_messaging import websocket_send
             websocket_send(
-                'http://127.0.0.1:8888', form.vars.message, 'mykey', 'mygroup')
+                'http://127.0.0.1:8888',form.vars.message,'mykey','mygroup')
         return form
 
 Acknowledgements:
@@ -85,7 +80,9 @@ import optparse
 import urllib
 import time
 
-listeners, names, tokens = {}, {}, {}
+listeners = {}
+names = {}
+tokens = {}
 
 
 def websocket_send(url, message, hmac_key=None, group='default'):
@@ -104,7 +101,7 @@ class PostHandler(tornado.web.RequestHandler):
     """
     def post(self):
         if hmac_key and not 'signature' in self.request.arguments:
-            return None
+            return 'false'
         if 'message' in self.request.arguments:
             message = self.request.arguments['message'][0]
             group = self.request.arguments.get('group', ['default'])[0]
@@ -112,10 +109,11 @@ class PostHandler(tornado.web.RequestHandler):
             if hmac_key:
                 signature = self.request.arguments['signature'][0]
                 if not hmac.new(hmac_key, message).hexdigest() == signature:
-                    return None
+                    return 'false'
             for client in listeners.get(group, []):
                 client.write_message(message)
-        return None
+            return 'true'
+        return 'false'
 
 
 class TokenHandler(tornado.web.RequestHandler):
@@ -126,15 +124,16 @@ class TokenHandler(tornado.web.RequestHandler):
     """
     def post(self):
         if hmac_key and not 'message' in self.request.arguments:
-            return None
+            return 'false'
         if 'message' in self.request.arguments:
             message = self.request.arguments['message'][0]
             if hmac_key:
                 signature = self.request.arguments['signature'][0]
                 if not hmac.new(hmac_key, message).hexdigest() == signature:
-                    return None
+                    return 'false'
             tokens[message] = None
-        return None
+            return 'true'
+        return 'false'
 
 
 class DistributeHandler(tornado.websocket.WebSocketHandler):

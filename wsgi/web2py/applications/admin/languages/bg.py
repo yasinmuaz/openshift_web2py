@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# coding: utf8
 {
 '!langcode!': 'bg',
 '!langname!': 'Български',

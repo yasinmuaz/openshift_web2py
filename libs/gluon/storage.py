@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-| This file is part of the web2py Web Framework
-| Copyrighted by Massimo Di Pierro <mdipierro@cs.depaul.edu>
-| License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
+This file is part of the web2py Web Framework
+Copyrighted by Massimo Di Pierro <mdipierro@cs.depaul.edu>
+License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
 
 Provides:
 
@@ -12,12 +12,8 @@ Provides:
 - Storage; like dictionary allowing also for `obj.foo` for `obj['foo']`
 """
 
-try:
-    import cPickle as pickle
-except:
-    import pickle
-import copy_reg
-import gluon.portalocker as portalocker
+import cPickle
+import portalocker
 
 __all__ = ['List', 'Storage', 'Settings', 'Messages',
            'StorageList', 'load_storage', 'save_storage']
@@ -28,8 +24,6 @@ class Storage(dict):
     """
     A Storage object is like a dictionary except `obj.foo` can be used
     in addition to `obj['foo']`, and setting obj.foo = None deletes item foo.
-
-    Example::
 
         >>> o = Storage(a=1)
         >>> print o.a
@@ -45,7 +39,6 @@ class Storage(dict):
         >>> del o.a
         >>> print o.a
         None
-
     """
     __slots__ = ()
     __setattr__ = dict.__setitem__
@@ -59,25 +52,23 @@ class Storage(dict):
 
     def getlist(self, key):
         """
-        Returns a Storage value as a list.
+        Return a Storage value as a list.
 
         If the value is a list it will be returned as-is.
         If object is None, an empty list will be returned.
-        Otherwise, `[value]` will be returned.
+        Otherwise, [value] will be returned.
 
-        Example output for a query string of `?x=abc&y=abc&y=def`::
-
-            >>> request = Storage()
-            >>> request.vars = Storage()
-            >>> request.vars.x = 'abc'
-            >>> request.vars.y = ['abc', 'def']
-            >>> request.vars.getlist('x')
-            ['abc']
-            >>> request.vars.getlist('y')
-            ['abc', 'def']
-            >>> request.vars.getlist('z')
-            []
-
+        Example output for a query string of ?x=abc&y=abc&y=def
+        >>> request = Storage()
+        >>> request.vars = Storage()
+        >>> request.vars.x = 'abc'
+        >>> request.vars.y = ['abc', 'def']
+        >>> request.vars.getlist('x')
+        ['abc']
+        >>> request.vars.getlist('y')
+        ['abc', 'def']
+        >>> request.vars.getlist('z')
+        []
         """
         value = self.get(key, [])
         if value is None or isinstance(value, (list, tuple)):
@@ -87,64 +78,53 @@ class Storage(dict):
 
     def getfirst(self, key, default=None):
         """
-        Returns the first value of a list or the value itself when given a
-        `request.vars` style key.
+        Return the first or only value when given a request.vars-style key.
 
         If the value is a list, its first item will be returned;
         otherwise, the value will be returned as-is.
 
-        Example output for a query string of `?x=abc&y=abc&y=def`::
-
-            >>> request = Storage()
-            >>> request.vars = Storage()
-            >>> request.vars.x = 'abc'
-            >>> request.vars.y = ['abc', 'def']
-            >>> request.vars.getfirst('x')
-            'abc'
-            >>> request.vars.getfirst('y')
-            'abc'
-            >>> request.vars.getfirst('z')
-
+        Example output for a query string of ?x=abc&y=abc&y=def
+        >>> request = Storage()
+        >>> request.vars = Storage()
+        >>> request.vars.x = 'abc'
+        >>> request.vars.y = ['abc', 'def']
+        >>> request.vars.getfirst('x')
+        'abc'
+        >>> request.vars.getfirst('y')
+        'abc'
+        >>> request.vars.getfirst('z')
         """
         values = self.getlist(key)
         return values[0] if values else default
 
     def getlast(self, key, default=None):
         """
-        Returns the last value of a list or value itself when given a
-        `request.vars` style key.
+        Returns the last or only single value when
+        given a request.vars-style key.
 
         If the value is a list, the last item will be returned;
         otherwise, the value will be returned as-is.
 
-        Simulated output with a query string of `?x=abc&y=abc&y=def`::
-
-            >>> request = Storage()
-            >>> request.vars = Storage()
-            >>> request.vars.x = 'abc'
-            >>> request.vars.y = ['abc', 'def']
-            >>> request.vars.getlast('x')
-            'abc'
-            >>> request.vars.getlast('y')
-            'def'
-            >>> request.vars.getlast('z')
-
+        Simulated output with a query string of ?x=abc&y=abc&y=def
+        >>> request = Storage()
+        >>> request.vars = Storage()
+        >>> request.vars.x = 'abc'
+        >>> request.vars.y = ['abc', 'def']
+        >>> request.vars.getlast('x')
+        'abc'
+        >>> request.vars.getlast('y')
+        'def'
+        >>> request.vars.getlast('z')
         """
         values = self.getlist(key)
         return values[-1] if values else default
-
-
-def pickle_storage(s):
-    return Storage, (dict(s),)
-
-copy_reg.pickle(Storage, pickle_storage)
 
 PICKABLE = (str, int, long, float, bool, list, dict, tuple, set)
 
 
 class StorageList(Storage):
     """
-    Behaves like Storage but missing elements defaults to [] instead of None
+    like Storage but missing elements default to [] instead of None
     """
     def __getitem__(self, key):
         return self.__getattr__(key)
@@ -162,7 +142,7 @@ def load_storage(filename):
     fp = None
     try:
         fp = portalocker.LockedFile(filename, 'rb')
-        storage = pickle.load(fp)
+        storage = cPickle.load(fp)
     finally:
         if fp:
             fp.close()
@@ -173,7 +153,7 @@ def save_storage(storage, filename):
     fp = None
     try:
         fp = portalocker.LockedFile(filename, 'wb')
-        pickle.dump(dict(storage), fp)
+        cPickle.dump(dict(storage), fp)
     finally:
         if fp:
             fp.close()
@@ -203,36 +183,35 @@ class FastStorage(dict):
     Eventually this should replace class Storage but causes memory leak
     because of http://bugs.python.org/issue1469629
 
-        >>> s = FastStorage()
-        >>> s.a = 1
-        >>> s.a
-        1
-        >>> s['a']
-        1
-        >>> s.b
-        >>> s['b']
-        >>> s['b']=2
-        >>> s['b']
-        2
-        >>> s.b
-        2
-        >>> isinstance(s,dict)
-        True
-        >>> dict(s)
-        {'a': 1, 'b': 2}
-        >>> dict(FastStorage(s))
-        {'a': 1, 'b': 2}
-        >>> import pickle
-        >>> s = pickle.loads(pickle.dumps(s))
-        >>> dict(s)
-        {'a': 1, 'b': 2}
-        >>> del s.b
-        >>> del s.a
-        >>> s.a
-        >>> s.b
-        >>> s['a']
-        >>> s['b']
-
+    >>> s = FastStorage()
+    >>> s.a = 1
+    >>> s.a
+    1
+    >>> s['a']
+    1
+    >>> s.b
+    >>> s['b']
+    >>> s['b']=2
+    >>> s['b']
+    2
+    >>> s.b
+    2
+    >>> isinstance(s,dict)
+    True
+    >>> dict(s)
+    {'a': 1, 'b': 2}
+    >>> dict(FastStorage(s))
+    {'a': 1, 'b': 2}
+    >>> import pickle
+    >>> s = pickle.loads(pickle.dumps(s))
+    >>> dict(s)
+    {'a': 1, 'b': 2}
+    >>> del s.b
+    >>> del s.a
+    >>> s.a
+    >>> s.b
+    >>> s['a']
+    >>> s['b']
     """
     def __init__(self, *args, **kwargs):
         dict.__init__(self, *args, **kwargs)
@@ -267,30 +246,14 @@ class FastStorage(dict):
 
 class List(list):
     """
-    Like a regular python list but a[i] if i is out of bounds returns None
-    instead of `IndexOutOfBounds`
+    Like a regular python list but a[i] if i is out of bounds return None
+    instead of IndexOutOfBounds
     """
 
     def __call__(self, i, default=DEFAULT, cast=None, otherwise=None):
-        """Allows to use a special syntax for fast-check of `request.args()`
-        validity
-
-        Args:
-            i: index
-            default: use this value if arg not found
-            cast: type cast
-            otherwise: can be:
-
-             - None: results in a 404
-             - str: redirect to this address
-             - callable: calls the function (nothing is passed)
-
-        Example:
-            You can use::
-
-                request.args(0,default=0,cast=int,otherwise='http://error_url')
-                request.args(0,default=0,cast=int,otherwise=lambda:...)
-
+        """
+        request.args(0,default=0,cast=int,otherwise='http://error_url')
+        request.args(0,default=0,cast=int,otherwise=lambda:...)
         """
         n = len(self)
         if 0 <= i < n or -n <= i < 0:

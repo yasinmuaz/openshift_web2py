@@ -1,4 +1,3 @@
-
 """
 Developed by Massimo Di Pierro
 Released under the web2py license (LGPL)
@@ -106,9 +105,9 @@ class WebClient(object):
         # assume everything is ok and make http request
         error = None
         try:
-            if isinstance(data, str):
+            if isinstance(data,str):
                 self.method = 'POST' if method=='auto' else method
-            elif isinstance(data, dict):
+            if isinstance(data, dict):
                 self.method = 'POST' if method=='auto' else method
                 # if there is only one form, set _formname automatically
                 if not '_formname' in data and len(self.forms) == 1:
@@ -120,11 +119,11 @@ class WebClient(object):
                     data['_formkey'] = self.forms[data['_formname']]
 
                 # time the POST request
-                data = urllib.urlencode(data, doseq=True)
+                data = urllib.urlencode(data)
             else:
                 self.method = 'GET' if method=='auto' else method
                 data = None
-            t0 = time.time()
+            t0 = time.time()            
             self.response = opener.open(self.url, data)
             self.time = time.time() - t0
         except urllib2.HTTPError, error:

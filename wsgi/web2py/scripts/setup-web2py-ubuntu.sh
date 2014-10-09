@@ -1,5 +1,5 @@
 echo "This script will:
-1) install all modules need to run web2py on Ubuntu 14.04
+1) install all modules need to run web2py on Ubuntu/Debian
 2) install web2py in /home/www-data/
 3) create a self signed sll certificate
 4) setup web2py with mod_wsgi
@@ -30,8 +30,7 @@ apt-get -y install zip unzip
 apt-get -y install tar
 apt-get -y install openssh-server
 apt-get -y install build-essential
-apt-get -y install python
-#apt-get -y install python2.5
+apt-get -y install python2.5
 apt-get -y install ipython
 apt-get -y install python-dev
 apt-get -y install postgresql
@@ -60,7 +59,6 @@ cd www-data
 rm web2py_src.zip*
 wget http://web2py.com/examples/static/web2py_src.zip
 unzip web2py_src.zip
-mv web2py/handlers/wsgihandler.py web2py/wsgihandler.py
 chown -R www-data:www-data web2py
 
 echo "setting up apache modules"
@@ -71,7 +69,6 @@ a2enmod proxy_http
 a2enmod headers
 a2enmod expires
 a2enmod wsgi
-a2enmod rewrite  # for 14.04
 mkdir /etc/apache2/ssl
 
 echo "creating a self signed certificate"
@@ -84,13 +81,46 @@ openssl x509 -noout -fingerprint -text < /etc/apache2/ssl/self_signed.cert > /et
 echo "rewriting your apache config file to use mod_wsgi"
 echo "================================================="
 echo '
-WSGIDaemonProcess web2py user=www-data group=www-data processes=1 threads=1
+NameVirtualHost *:80
+NameVirtualHost *:443
+# If the WSGIDaemonProcess directive is specified outside of all virtual
+# host containers, any WSGI application can be delegated to be run within
+# that daemon process group.
+# If the WSGIDaemonProcess directive is specified
+# within a virtual host container, only WSGI applications associated with
+# virtual hosts with the same server name as that virtual host can be
+# delegated to that set of daemon processes.
+WSGIDaemonProcess web2py user=www-data group=www-data
 
 <VirtualHost *:80>
+  WSGIProcessGroup web2py
+  WSGIScriptAlias / /home/www-data/web2py/wsgihandler.py
+  WSGIPassAuthorization On
 
-  RewriteEngine On
-  RewriteCond %{HTTPS} !=on
-  RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L]
+  <Directory /home/www-data/web2py>
+    AllowOverride None
+    Order Allow,Deny
+    Deny from all
+    <Files wsgihandler.py>
+      Allow from all
+    </Files>
+  </Directory>
+
+  AliasMatch ^/([^/]+)/static/(?:_[\d]+.[\d]+.[\d]+/)?(.*) \
+           /home/www-data/web2py/applications/$1/static/$2
+  <Directory /home/www-data/web2py/applications/*/static/>
+    Options -Indexes
+    Order Allow,Deny
+    Allow from all
+  </Directory>
+
+  <Location /admin>
+  Deny from all
+  </Location>
+
+  <LocationMatch ^/([^/]+)/appadmin>
+  Deny from all
+  </LocationMatch>
 
   CustomLog /var/log/apache2/access.log common
   ErrorLog /var/log/apache2/error.log
@@ -107,9 +137,10 @@ WSGIDaemonProcess web2py user=www-data group=www-data processes=1 threads=1
 
   <Directory /home/www-data/web2py>
     AllowOverride None
-    Require all denied
+    Order Allow,Deny
+    Deny from all
     <Files wsgihandler.py>
-      Require all granted
+      Allow from all
     </Files>
   </Directory>
 
@@ -120,16 +151,14 @@ WSGIDaemonProcess web2py user=www-data group=www-data processes=1 threads=1
     Options -Indexes
     ExpiresActive On
     ExpiresDefault "access plus 1 hour"
-    Require all granted
+    Order Allow,Deny
+    Allow from all
   </Directory>
 
-  CustomLog /var/log/apache2/ssl-access.log common
+  CustomLog /var/log/apache2/access.log common
   ErrorLog /var/log/apache2/error.log
 </VirtualHost>
-' > /etc/apache2/sites-available/default.conf  # FOR 14.04
-
-sudo rm /etc/apache2/sites-enabled/*    # FOR 14.04
-sudo a2ensite default                   # FOR 14.04
+' > /etc/apache2/sites-available/default
 
 # echo "setting up PAM"
 # echo "================"

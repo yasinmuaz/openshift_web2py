@@ -16,9 +16,7 @@ except Exception, e:
 
 def ldap_auth(server='ldap', port=None,
               base_dn='ou=users,dc=domain,dc=com',
-              mode='uid', secure=False, 
-              cert_path=None, cert_file=None,              
-              cacert_path=None, cacert_file=None, key_file=None,
+              mode='uid', secure=False, cert_path=None, cert_file=None,
               bind_dn=None, bind_pw=None, filterstr='objectClass=*',
               username_attrib='uid',
               custom_scope='subtree',
@@ -172,8 +170,6 @@ def ldap_auth(server='ldap', port=None,
                       secure=secure,
                       cert_path=cert_path,
                       cert_file=cert_file,
-                      cacert_file=cacert_file,
-                      key_file=key_file,
                       filterstr=filterstr,
                       username_attrib=username_attrib,
                       custom_scope=custom_scope,
@@ -271,8 +267,6 @@ def ldap_auth(server='ldap', port=None,
 
             if ldap_mode == 'cn':
                 # OpenLDAP (CN)
-                if ldap_binddn and ldap_bindpw:
-                    con.simple_bind_s(ldap_binddn, ldap_bindpw)
                 dn = "cn=" + username + "," + ldap_basedn
                 con.simple_bind_s(dn, password)
                 if manage_user:
@@ -284,12 +278,7 @@ def ldap_auth(server='ldap', port=None,
 
             if ldap_mode == 'uid':
                 # OpenLDAP (UID)
-                if ldap_binddn and ldap_bindpw:
-                    con.simple_bind_s(ldap_binddn, ldap_bindpw)
-                    dn = "uid=" + username + "," + ldap_basedn
-                    dn = con.search_s(ldap_basedn, ldap.SCOPE_SUBTREE, "(uid=%s)"%username, [''])[0][0]
-                else:
-                    dn = "uid=" + username + "," + ldap_basedn
+                dn = "uid=" + username + "," + ldap_basedn
                 con.simple_bind_s(dn, password)
                 if manage_user:
                     result = con.search_s(dn, ldap.SCOPE_BASE,
@@ -572,9 +561,7 @@ def ldap_auth(server='ldap', port=None,
                   ldap_mode=mode,
                   secure=secure,
                   cert_path=cert_path,
-                  cert_file=cert_file,
-                  cacert_file=cacert_file,
-                  key_file=key_file):
+                  cert_file=cert_file):
         """
         Inicialize ldap connection
         """
@@ -582,19 +569,12 @@ def ldap_auth(server='ldap', port=None,
         if secure:
             if not ldap_port:
                 ldap_port = 636
-                
-            if cacert_path:
-                ldap.set_option(ldap.OPT_X_TLS_CACERTDIR, cacert_path)
-                
-            if cacert_file:
-                ldap.set_option(ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_NEVER)
-                ldap.set_option(ldap.OPT_X_TLS_CACERTFILE, cacert_file)
+            con = ldap.initialize(
+                "ldaps://" + ldap_server + ":" + str(ldap_port))
+            if cert_path:
+                con.set_option(ldap.OPT_X_TLS_CACERTDIR, cert_path)
             if cert_file:
-                ldap.set_option(ldap.OPT_X_TLS_CERTFILE, cert_file)
-            if key_file:
-                ldap.set_option(ldap.OPT_X_TLS_KEYFILE, key_file)
-                
-            con = ldap.initialize("ldaps://" + ldap_server + ":" + str(ldap_port))
+                con.set_option(ldap.OPT_X_TLS_CACERTFILE, cert_file)
         else:
             if not ldap_port:
                 ldap_port = 389
@@ -660,10 +640,7 @@ def ldap_auth(server='ldap', port=None,
             else:
                 # bind as anonymous
                 con.simple_bind_s('', '')
-                
-        # if username is None, return empty list
-        if username is None:
-            return list()
+
         # search for groups where user is in
         filter = '(&(%s=%s)(%s))' % (ldap.filter.escape_filter_chars(
                                                             group_member_attrib

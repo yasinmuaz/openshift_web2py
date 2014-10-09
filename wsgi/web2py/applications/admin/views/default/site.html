@@ -54,7 +54,7 @@
         {{pass}}
           </ul>
         </div>
-        {{=button_enable(URL('enable',args=a), a) if a!='admin' else ''}}
+        {{=button_enable(URL('enable',args=a), a)}}
       </td>
     </tr>
     {{pass}}
@@ -78,8 +78,7 @@
     <h4>{{=T("Version")}}</h4>
     <p>
       <tt>{{=myversion}}</tt><br/>
-      {{running_on = T("Running on %s", request.env.server_software or 'Unknown')}}
-      ({{="%s, Python %s" % (running_on, myplatform)}})
+      ({{=T("Running on %s", request.env.server_software)}})
     </p>
     <p id="check_version" class="row-buttons">
       {{if session.check_version:}}
@@ -153,5 +152,5 @@
       </div><!-- /TWITTER TIMELINE -->
     </div>
   </div> <!-- /sidebar -->
-</div> <!-- /row-fluid -->
+</div> <!-- /row-fluid
 <!-- end "site" block -->

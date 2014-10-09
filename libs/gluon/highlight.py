@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-| This file is part of the web2py Web Framework
-| Copyrighted by Massimo Di Pierro <mdipierro@cs.depaul.edu>
-| License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
+This file is part of the web2py Web Framework
+Copyrighted by Massimo Di Pierro <mdipierro@cs.depaul.edu>
+License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
 """
 
 import re
@@ -15,7 +15,8 @@ __all__ = ['highlight']
 
 class Highlighter(object):
 
-    """Does syntax highlighting.
+    """
+    Do syntax highlighting.
     """
 
     def __init__(
@@ -25,7 +26,7 @@ class Highlighter(object):
         styles=None,
     ):
         """
-        Initialize highlighter:
+        Initialise highlighter:
             mode = language (PYTHON, WEB2PY,C, CPP, HTML, HTML_PLAIN)
         """
         styles = styles or {}
@@ -332,7 +333,7 @@ def highlight(
                   == '_' and value])
     if fa:
         fa = ' ' + fa
-    return '<table%s><tr style="vertical-align:top;"><td style="min-width:40px; text-align: right;"><pre style="%s">%s</pre></td><td><pre style="%s">%s</pre></td></tr></table>'\
+    return '<table%s><tr style="vertical-align:top;"><td style="width:40px; text-align: right;"><pre style="%s">%s</pre></td><td><pre style="%s">%s</pre></td></tr></table>'\
         % (fa, linenumbers_style, numbers, code_style, code)
 
 

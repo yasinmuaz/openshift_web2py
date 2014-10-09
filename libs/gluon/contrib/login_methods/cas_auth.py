@@ -4,12 +4,12 @@
 """
 This file is part of web2py Web Framework (Copyrighted, 2007-2009).
 Developed by Massimo Di Pierro <mdipierro@cs.depaul.edu>.
-License: LGPL v3
+License: GPL v2
 
 Tinkered by Szabolcs Gyuris < szimszo n @ o regpreshaz dot eu>
 """
 
-from gluon import current, redirect, URL
+from gluon import current, redirect
 
 
 class CasAuth(object):
@@ -56,11 +56,15 @@ class CasAuth(object):
         self.maps = maps
         self.casversion = casversion
         self.casusername = casusername
-        # vars commented because of
-        # https://code.google.com/p/web2py/issues/detail?id=1774
-        self.cas_my_url = URL(args=current.request.args,
-                              #vars=current.request.vars, 
-                              scheme=True)
+        http_host = current.request.env.http_x_forwarded_host
+        if not http_host:
+            http_host = current.request.env.http_host
+        if current.request.env.wsgi_url_scheme in ['https', 'HTTPS']:
+            scheme = 'https'
+        else:
+            scheme = 'http'
+        self.cas_my_url = '%s://%s%s' % (
+            scheme, http_host, current.request.env.path_info)
 
     def login_url(self, next="/"):
         current.session.token = self._CAS_login()

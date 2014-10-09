@@ -122,7 +122,6 @@ mkdir ./web-apps
 cd ./web-apps
 curl -O http://www.web2py.com/examples/static/web2py_src.zip
 unzip web2py_src.zip
-mv web2py/handlers/wsgihandler.py web2py/wsgihandler.py
 
 echo "Set the ownership for web2py application to uwsgi"
 chown -R uwsgi /opt/web-apps/web2py
@@ -181,9 +180,8 @@ echo '
 server {
   listen 80;
   server_name $hostname;
-  location ~* /(\w+)/static(?:/_[\d]+\.[\d]+\.[\d]+)?/(.*)$ {
-            alias /opt/web-apps/web2py/applications/$1/static/$2;
-            expires max;
+  location ~* /(\w+)/static/ {
+    root /opt/web-apps/web2py/applications/;
   }
   location / {
     uwsgi_pass 127.0.0.1:9001;
@@ -201,10 +199,6 @@ server {
     uwsgi_pass 127.0.0.1:9001;
     include uwsgi_params;
     uwsgi_param UWSGI_SCHEME $scheme;
-  }
-  location ~* /(\w+)/static(?:/_[\d]+\.[\d]+\.[\d]+)?/(.*)$ {
-            alias /opt/web-apps/web2py/applications/$1/static/$2;
-            expires max;
   }
 }
 ' > /etc/nginx/conf.d/web2py.conf

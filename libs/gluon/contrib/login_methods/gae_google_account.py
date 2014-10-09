@@ -4,7 +4,7 @@
 """
 This file is part of web2py Web Framework (Copyrighted, 2007-2009).
 Developed by Massimo Di Pierro <mdipierro@cs.depaul.edu>.
-License: LGPL v3
+License: GPL v2
 
 Thanks to Hans Donner <hans.donner@pobox.com> for GaeGoogleAccount.
 """
@@ -34,8 +34,5 @@ class GaeGoogleAccount(object):
     def get_user(self):
         user = users.get_current_user()
         if user:
-            return dict(nickname = user.nickname(),
-                        email = user.email(),
-                        registration_id = user.user_id(),
-                        user_id = user.user_id(),
-                        source = "google account")
+            return dict(nickname=user.nickname(), email=user.email(),
+                        user_id=user.user_id(), source="google account")

@@ -1,11 +1,4 @@
-(function(mod) {
-  if (typeof exports == "object" && typeof module == "object") // CommonJS
-    mod(require("../lib/codemirror"));
-  else if (typeof define == "function" && define.amd) // AMD
-    define(["../lib/codemirror"], mod);
-  else // Plain browser env
-    mod(CodeMirror);
-})(function(CodeMirror) {
+(function() {
   "use strict";
 
   var Pos = CodeMirror.Pos;
@@ -181,7 +174,7 @@
     if (dup > 1 && event.origin == "+input") {
       var one = event.text.join("\n"), txt = "";
       for (var i = 1; i < dup; ++i) txt += one;
-      cm.replaceSelection(txt);
+      cm.replaceSelection(txt, "end", "+input");
     }
   }
 
@@ -204,13 +197,8 @@
 
   function setMark(cm) {
     cm.setCursor(cm.getCursor());
-    cm.setExtending(!cm.getExtending());
+    cm.setExtending(true);
     cm.on("change", function() { cm.setExtending(false); });
-  }
-
-  function clearMark(cm) {
-    cm.setExtending(false);
-    cm.setCursor(cm.getCursor());
   }
 
   function getInput(cm, msg, f) {
@@ -246,11 +234,6 @@
     }
   }
 
-  function quit(cm) {
-    cm.execCommand("clearSearch");
-    clearMark(cm);
-  }
-
   // Actual keymap
 
   var keyMap = CodeMirror.keyMap.emacs = {
@@ -266,14 +249,13 @@
     }),
     "Alt-W": function(cm) {
       addToRing(cm.getSelection());
-      clearMark(cm);
     },
     "Ctrl-Y": function(cm) {
       var start = cm.getCursor();
       cm.replaceRange(getFromRing(getPrefix(cm)), start, start, "paste");
       cm.setSelection(start, cm.getCursor());
     },
-    "Alt-Y": function(cm) {cm.replaceSelection(popFromRing(), "around", "paste");},
+    "Alt-Y": function(cm) {cm.replaceSelection(popFromRing());},
 
     "Ctrl-Space": setMark, "Ctrl-Shift-2": setMark,
 
@@ -330,7 +312,7 @@
       var range = cm.getRange(from, pos);
       if (range.length != 2) return;
       cm.setSelection(from, pos);
-      cm.replaceSelection(range.charAt(1) + range.charAt(0), null, "+transpose");
+      cm.replaceSelection(range.charAt(1) + range.charAt(0), "end");
     }),
 
     "Alt-C": repeated(function(cm) {
@@ -352,7 +334,7 @@
     "Ctrl-/": repeated("undo"), "Shift-Ctrl--": repeated("undo"),
     "Ctrl-Z": repeated("undo"), "Cmd-Z": repeated("undo"),
     "Shift-Alt-,": "goDocStart", "Shift-Alt-.": "goDocEnd",
-    "Ctrl-S": "findNext", "Ctrl-R": "findPrev", "Ctrl-G": quit, "Shift-Alt-5": "replace",
+    "Ctrl-S": "findNext", "Ctrl-R": "findPrev", "Ctrl-G": "clearSearch", "Shift-Alt-5": "replace",
     "Alt-/": "autocomplete",
     "Ctrl-J": "newlineAndIndent", "Enter": false, "Tab": "indentAuto",
 
@@ -371,7 +353,7 @@
     },
 
     "Ctrl-S": "save", "Ctrl-W": "save", "S": "saveAll", "F": "open", "U": repeated("undo"), "K": "close",
-    "Delete": function(cm) { kill(cm, cm.getCursor(), bySentence(cm, cm.getCursor(), 1), true); },
+    "Delete": function(cm) { kill(cm, cm.getCursor(), sentenceEnd(cm, 1), true); },
     auto: "emacs", nofallthrough: true, disableInput: true
   };
 
@@ -402,4 +384,4 @@
   }
   for (var i = 0; i < 10; ++i) regPrefix(String(i));
   regPrefix("-");
-});
+})();

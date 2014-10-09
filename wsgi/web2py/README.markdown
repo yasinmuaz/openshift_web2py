@@ -6,16 +6,6 @@ It is written and programmable in Python. LGPLv3 License
 
 Learn more at http://web2py.com
 
-## Google App Engine deployment
-
-    cp examples/app.yaml ./
-    cp handlers/gaehandler.py ./
-    
-Then edit ./app.yaml and replace "yourappname" with yourappname.
-
-## Documentation (readthedocs.org)
-
-[![Docs Status](https://readthedocs.org/projects/web2py/badge/?version=latest)](http://web2py.rtfd.org/)
 
 ## Tests
 
@@ -39,10 +29,11 @@ That's it!!!
         VERSION                    > this web2py version
         web2py.py                  > the startup script
         anyserver.py               > to run with third party servers
+        wsgihandler.py             > handler to connect to WSGI
         ...                        > other handlers and example files
         gluon/                     > the core libraries
             contrib/               > third party libraries
-            tests/                 > unittests  
+            tests/                 > unittests
         applications/              > are the apps
             admin/                 > web based IDE
                 ...
@@ -63,15 +54,9 @@ That's it!!!
                 cron/
                 tests/
             ...                    > your own apps
-        examples/                  > example config files, mv .. and customize
-        extras/                    > other files which are required for building web2py
         scripts/                   > utility and installation scripts
-        handlers/
-            wsgihandler.py         > handler to connect to WSGI
-            ...                    > handlers for Fast-CGI, SCGI, Gevent, etc
         site-packages/             > additional optional modules
-        logs/                      > log files will go in there
-        deposit/                   > a place where web2py stores apps temporarily
+
 
 ## Issues?
 

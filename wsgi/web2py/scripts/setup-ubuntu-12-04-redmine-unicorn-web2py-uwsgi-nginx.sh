@@ -326,9 +326,14 @@ server {
         access_log  /var/log/nginx/yoursite.access.log;
         error_log  /var/log/nginx/yoursite.error.log;
         #to enable correct use of response.static_version
-        location ~* /(\w+)/static(?:/_[\d]+\.[\d]+\.[\d]+)?/(.*)$ {
-            alias /home/www-data/web2py/applications/$1/static/$2;
-            expires max;
+        #location ~* /(\w+)/static(?:/_[\d]+\.[\d]+\.[\d]+)?/(.*)$ {
+        #    alias /home/www-data/web2py/applications/$1/static/$2;
+        #    expires max;
+        #}
+        location ~* /(\w+)/static/ {
+            root /home/www-data/web2py/applications/;
+            #remove next comment on production
+            #expires max;
         }
         location ~^\/(?!redmine(.*)) {
             #uwsgi_pass      127.0.0.1:9001;
@@ -361,10 +366,6 @@ server {
                 ssl_ciphers ECDHE-RSA-AES256-SHA:DHE-RSA-AES256-SHA:DHE-DSS-AES256-SHA:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA;
                 ssl_protocols SSLv3 TLSv1;
                 keepalive_timeout    70;
-        location ~* /(\w+)/static(?:/_[\d]+\.[\d]+\.[\d]+)?/(.*)$ {
-            alias /home/www-data/web2py/applications/$1/static/$2;
-            expires max;
-        }
         location ~^\/(?!redmine(.*)) {
             #uwsgi_pass      127.0.0.1:9001;
             uwsgi_pass      unix:///tmp/web2py.socket;
@@ -399,7 +400,7 @@ else
     rm ~/self_signed.*
 fi
 
-pip install setuptools --no-use-wheel --upgrade
+pip install --upgrade pip
 PIPPATH=`which pip`
 $PIPPATH install --upgrade uwsgi
 
@@ -452,9 +453,10 @@ cd /home/www-data
 wget http://web2py.com/examples/static/web2py_src.zip
 unzip web2py_src.zip
 rm web2py_src.zip
+# Download latest version of sessions2trash.py
+wget http://web2py.googlecode.com/hg/scripts/sessions2trash.py -O /home/www-data/web2py/scripts/sessions2trash.py
 chown -R www-data:www-data web2py
 cd /home/www-data/web2py
-mv handlers/wsgihandler.py wsgihandler.py
 sudo -u www-data python -c "from gluon.main import save_password; save_password('$PW',443)"
 /etc/init.d/redmine start
 start uwsgi-emperor

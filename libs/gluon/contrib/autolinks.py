@@ -116,7 +116,6 @@ EXTENSION_MAPS = {
     'mpeg': video,
     'mpeg4': video,
     'movie': video,
-    'wmv': video,
     'load': web2py_component,
     'pdf': googledoc_viewer,
     'doc': googledoc_viewer,
@@ -159,8 +158,6 @@ def extension(url):
 
 def expand_one(url, cdict):
     # try ombed but first check in cache
-    if '@' in url and not '://'in url:
-        return '<a href="mailto:%s">%s</a>' % (url, url)
     if cdict and url in cdict:
         r = cdict[url]
     else:

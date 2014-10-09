@@ -103,9 +103,6 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
       state.f = inlineNormal;
       state.block = blockNormal;
     }
-    // Reset state.trailingSpace
-    state.trailingSpace = 0;
-    state.trailingSpaceNewLine = false;
     // Mark this line as blank
     state.thisLineHasContent = false;
     return null;
@@ -218,12 +215,6 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
       } else {
         styles.push(list3);
       }
-    }
-
-    if (state.trailingSpaceNewLine) {
-      styles.push("trailing-space-new-line");
-    } else if (state.trailingSpace) {
-      styles.push("trailing-space-" + (state.trailingSpace % 2 ? "a" : "b"));
     }
 
     return styles.length ? styles.join(' ') : null;
@@ -378,14 +369,6 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
       }
     }
 
-    if (ch === ' ') {
-      if (stream.match(/ +$/, false)) {
-        state.trailingSpace++;
-      } else if (state.trailingSpace) {
-        state.trailingSpaceNewLine = true;
-      }
-    }
-
     return getType(state);
   }
 
@@ -470,9 +453,7 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
         taskList: false,
         list: false,
         listDepth: 0,
-        quote: 0,
-        trailingSpace: 0,
-        trailingSpaceNewLine: false
+        quote: 0
       };
     },
 
@@ -500,8 +481,6 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
         list: s.list,
         listDepth: s.listDepth,
         quote: s.quote,
-        trailingSpace: s.trailingSpace,
-        trailingSpaceNewLine: s.trailingSpaceNewLine,
         md_inside: s.md_inside
       };
     },
@@ -524,10 +503,6 @@ CodeMirror.defineMode("markdown", function(cmCfg, modeCfg) {
 
         // Reset state.code
         state.code = false;
-
-        // Reset state.trailingSpace
-        state.trailingSpace = 0;
-        state.trailingSpaceNewLine = false;
 
         state.f = state.block;
         var indentation = stream.match(/^\s*/, true)[0].replace(/\t/g, '    ').length;

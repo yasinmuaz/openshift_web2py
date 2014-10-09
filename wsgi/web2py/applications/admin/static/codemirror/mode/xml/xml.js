@@ -1,18 +1,6 @@
-(function(mod) {
-  if (typeof exports == "object" && typeof module == "object") // CommonJS
-    mod(require("../../lib/codemirror"));
-  else if (typeof define == "function" && define.amd) // AMD
-    define(["../../lib/codemirror"], mod);
-  else // Plain browser env
-    mod(CodeMirror);
-})(function(CodeMirror) {
-"use strict";
-
 CodeMirror.defineMode("xml", function(config, parserConfig) {
   var indentUnit = config.indentUnit;
   var multilineTagIndentFactor = parserConfig.multilineTagIndentFactor || 1;
-  var multilineTagIndentPastTag = parserConfig.multilineTagIndentPastTag;
-  if (multilineTagIndentPastTag == null) multilineTagIndentPastTag = true;
 
   var Kludges = parserConfig.htmlMode ? {
     autoSelfClosers: {'area': true, 'base': true, 'br': true, 'col': true, 'command': true,
@@ -44,21 +32,19 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
     },
     doNotIndent: {"pre": true},
     allowUnquoted: true,
-    allowMissing: true,
-    caseFold: true
+    allowMissing: true
   } : {
     autoSelfClosers: {},
     implicitlyClosed: {},
     contextGrabbers: {},
     doNotIndent: {},
     allowUnquoted: false,
-    allowMissing: false,
-    caseFold: false
+    allowMissing: false
   };
   var alignCDATA = parserConfig.alignCDATA;
 
   // Return variables for tokenizers
-  var tagName, type, setStyle;
+  var tagName, type;
 
   function inText(stream, state) {
     function chain(parser) {
@@ -89,8 +75,7 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
         tagName = "";
         var c;
         while ((c = stream.eat(/[^\s\u00a0=<>\"\'\/?]/))) tagName += c;
-        if (Kludges.caseFold) tagName = tagName.toLowerCase();
-        if (!tagName) return "tag error";
+        if (!tagName) return "error";
         type = isClose ? "closeTag" : "openTag";
         state.tokenize = inTag;
         return "tag";
@@ -123,14 +108,9 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
       type = "equals";
       return null;
     } else if (ch == "<") {
-      state.tokenize = inText;
-      state.state = baseState;
-      state.tagName = state.tagStart = null;
-      var next = state.tokenize(stream, state);
-      return next ? next + " error" : "error";
+      return "error";
     } else if (/[\'\"]/.test(ch)) {
       state.tokenize = inAttribute(ch);
-      state.stringStartCol = stream.column();
       return state.tokenize(stream, state);
     } else {
       stream.eatWhile(/[^\s\u00a0=<>\"\']/);
@@ -139,7 +119,7 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
   }
 
   function inAttribute(quote) {
-    var closure = function(stream, state) {
+    return function(stream, state) {
       while (!stream.eol()) {
         if (stream.next() == quote) {
           state.tokenize = inTag;
@@ -148,8 +128,6 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
       }
       return "string";
     };
-    closure.isInAttribute = true;
-    return closure;
   }
 
   function inBlock(style, terminator) {
@@ -185,144 +163,146 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
     };
   }
 
-  function Context(state, tagName, startOfLine) {
-    this.prev = state.context;
-    this.tagName = tagName;
-    this.indent = state.indented;
-    this.startOfLine = startOfLine;
-    if (Kludges.doNotIndent.hasOwnProperty(tagName) || (state.context && state.context.noIndent))
-      this.noIndent = true;
+  var curState, curStream, setStyle;
+  function pass() {
+    for (var i = arguments.length - 1; i >= 0; i--) curState.cc.push(arguments[i]);
   }
-  function popContext(state) {
-    if (state.context) state.context = state.context.prev;
-  }
-  function maybePopContext(state, nextTagName) {
-    var parentTagName;
-    while (true) {
-      if (!state.context) {
-        return;
-      }
-      parentTagName = state.context.tagName;
-      if (!Kludges.contextGrabbers.hasOwnProperty(parentTagName) ||
-          !Kludges.contextGrabbers[parentTagName].hasOwnProperty(nextTagName)) {
-        return;
-      }
-      popContext(state);
-    }
+  function cont() {
+    pass.apply(null, arguments);
+    return true;
   }
 
-  function baseState(type, stream, state) {
+  function pushContext(tagName, startOfLine) {
+    var noIndent = Kludges.doNotIndent.hasOwnProperty(tagName) || (curState.context && curState.context.noIndent);
+    curState.context = {
+      prev: curState.context,
+      tagName: tagName,
+      indent: curState.indented,
+      startOfLine: startOfLine,
+      noIndent: noIndent
+    };
+  }
+  function popContext() {
+    if (curState.context) curState.context = curState.context.prev;
+  }
+
+  function element(type) {
     if (type == "openTag") {
-      state.tagName = tagName;
-      state.tagStart = stream.column();
-      return attrState;
+      curState.tagName = tagName;
+      curState.tagStart = curStream.column();
+      return cont(attributes, endtag(curState.startOfLine));
     } else if (type == "closeTag") {
       var err = false;
-      if (state.context) {
-        if (state.context.tagName != tagName) {
-          if (Kludges.implicitlyClosed.hasOwnProperty(state.context.tagName))
-            popContext(state);
-          err = !state.context || state.context.tagName != tagName;
+      if (curState.context) {
+        if (curState.context.tagName != tagName) {
+          if (Kludges.implicitlyClosed.hasOwnProperty(curState.context.tagName.toLowerCase())) {
+            popContext();
+          }
+          err = !curState.context || curState.context.tagName != tagName;
         }
       } else {
         err = true;
       }
       if (err) setStyle = "error";
-      return err ? closeStateErr : closeState;
-    } else {
-      return baseState;
+      return cont(endclosetag(err));
     }
+    return cont();
   }
-
-  function closeState(type, _stream, state) {
-    if (type != "endTag") {
-      setStyle = "error";
-      return closeState;
-    }
-    popContext(state);
-    return baseState;
-  }
-  function closeStateErr(type, stream, state) {
-    setStyle = "error";
-    return closeState(type, stream, state);
-  }
-
-  function attrState(type, _stream, state) {
-    if (type == "word") {
-      setStyle = "attribute";
-      return attrEqState;
-    } else if (type == "endTag" || type == "selfcloseTag") {
-      var tagName = state.tagName, tagStart = state.tagStart;
-      state.tagName = state.tagStart = null;
+  function endtag(startOfLine) {
+    return function(type) {
+      var tagName = curState.tagName;
+      curState.tagName = curState.tagStart = null;
       if (type == "selfcloseTag" ||
-          Kludges.autoSelfClosers.hasOwnProperty(tagName)) {
-        maybePopContext(state, tagName);
-      } else {
-        maybePopContext(state, tagName);
-        state.context = new Context(state, tagName, tagStart == state.indented);
+          (type == "endTag" && Kludges.autoSelfClosers.hasOwnProperty(tagName.toLowerCase()))) {
+        maybePopContext(tagName.toLowerCase());
+        return cont();
       }
-      return baseState;
+      if (type == "endTag") {
+        maybePopContext(tagName.toLowerCase());
+        pushContext(tagName, startOfLine);
+        return cont();
+      }
+      return cont();
+    };
+  }
+  function endclosetag(err) {
+    return function(type) {
+      if (err) setStyle = "error";
+      if (type == "endTag") { popContext(); return cont(); }
+      setStyle = "error";
+      return cont(arguments.callee);
+    };
+  }
+  function maybePopContext(nextTagName) {
+    var parentTagName;
+    while (true) {
+      if (!curState.context) {
+        return;
+      }
+      parentTagName = curState.context.tagName.toLowerCase();
+      if (!Kludges.contextGrabbers.hasOwnProperty(parentTagName) ||
+          !Kludges.contextGrabbers[parentTagName].hasOwnProperty(nextTagName)) {
+        return;
+      }
+      popContext();
     }
-    setStyle = "error";
-    return attrState;
   }
-  function attrEqState(type, stream, state) {
-    if (type == "equals") return attrValueState;
+
+  function attributes(type) {
+    if (type == "word") {setStyle = "attribute"; return cont(attribute, attributes);}
+    if (type == "endTag" || type == "selfcloseTag") return pass();
+    setStyle = "error";
+    return cont(attributes);
+  }
+  function attribute(type) {
+    if (type == "equals") return cont(attvalue, attributes);
     if (!Kludges.allowMissing) setStyle = "error";
-    return attrState(type, stream, state);
+    else if (type == "word") setStyle = "attribute";
+    return (type == "endTag" || type == "selfcloseTag") ? pass() : cont();
   }
-  function attrValueState(type, stream, state) {
-    if (type == "string") return attrContinuedState;
-    if (type == "word" && Kludges.allowUnquoted) {setStyle = "string"; return attrState;}
+  function attvalue(type) {
+    if (type == "string") return cont(attvaluemaybe);
+    if (type == "word" && Kludges.allowUnquoted) {setStyle = "string"; return cont();}
     setStyle = "error";
-    return attrState(type, stream, state);
+    return (type == "endTag" || type == "selfCloseTag") ? pass() : cont();
   }
-  function attrContinuedState(type, stream, state) {
-    if (type == "string") return attrContinuedState;
-    return attrState(type, stream, state);
+  function attvaluemaybe(type) {
+    if (type == "string") return cont(attvaluemaybe);
+    else return pass();
   }
 
   return {
     startState: function() {
-      return {tokenize: inText,
-              state: baseState,
-              indented: 0,
-              tagName: null, tagStart: null,
-              context: null};
+      return {tokenize: inText, cc: [], indented: 0, startOfLine: true, tagName: null, tagStart: null, context: null};
     },
 
     token: function(stream, state) {
-      if (!state.tagName && stream.sol())
+      if (!state.tagName && stream.sol()) {
+        state.startOfLine = true;
         state.indented = stream.indentation();
-
-      if (stream.eatSpace()) return null;
-      tagName = type = null;
-      var style = state.tokenize(stream, state);
-      if ((style || type) && style != "comment") {
-        setStyle = null;
-        state.state = state.state(type || style, stream, state);
-        if (setStyle)
-          style = setStyle == "error" ? style + " error" : setStyle;
       }
-      return style;
+      if (stream.eatSpace()) return null;
+
+      setStyle = type = tagName = null;
+      var style = state.tokenize(stream, state);
+      state.type = type;
+      if ((style || type) && style != "comment") {
+        curState = state; curStream = stream;
+        while (true) {
+          var comb = state.cc.pop() || element;
+          if (comb(type || style)) break;
+        }
+      }
+      state.startOfLine = false;
+      return setStyle || style;
     },
 
     indent: function(state, textAfter, fullLine) {
       var context = state.context;
-      // Indent multi-line strings (e.g. css).
-      if (state.tokenize.isInAttribute) {
-        return state.stringStartCol + 1;
-      }
-      if (context && context.noIndent) return CodeMirror.Pass;
-      if (state.tokenize != inTag && state.tokenize != inText)
+      if ((state.tokenize != inTag && state.tokenize != inText) ||
+          context && context.noIndent)
         return fullLine ? fullLine.match(/^(\s*)/)[0].length : 0;
-      // Indent the starts of attribute names.
-      if (state.tagName) {
-        if (multilineTagIndentPastTag)
-          return state.tagStart + state.tagName.length + 2;
-        else
-          return state.tagStart + indentUnit * multilineTagIndentFactor;
-      }
+      if (state.tagName) return state.tagStart + indentUnit * multilineTagIndentFactor;
       if (alignCDATA && /<!\[CDATA\[/.test(textAfter)) return 0;
       if (context && /^<\//.test(textAfter))
         context = context.prev;
@@ -336,8 +316,7 @@ CodeMirror.defineMode("xml", function(config, parserConfig) {
     blockCommentStart: "<!--",
     blockCommentEnd: "-->",
 
-    configuration: parserConfig.htmlMode ? "html" : "xml",
-    helperType: parserConfig.htmlMode ? "html" : "xml"
+    configuration: parserConfig.htmlMode ? "html" : "xml"
   };
 });
 
@@ -345,5 +324,3 @@ CodeMirror.defineMIME("text/xml", "xml");
 CodeMirror.defineMIME("application/xml", "xml");
 if (!CodeMirror.mimeModes.hasOwnProperty("text/html"))
   CodeMirror.defineMIME("text/html", {name: "xml", htmlMode: true});
-
-});

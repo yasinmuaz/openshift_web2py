@@ -1,13 +1,10 @@
 /* Just enough of CodeMirror to run runMode under node.js */
 
-// declare global: StringStream
-
 function splitLines(string){ return string.split(/\r?\n|\r/); };
 
 function StringStream(string) {
   this.pos = this.start = 0;
   this.string = string;
-  this.lineStart = 0;
 }
 StringStream.prototype = {
   eol: function() {return this.pos >= this.string.length;},
@@ -39,29 +36,22 @@ StringStream.prototype = {
     if (found > -1) {this.pos = found; return true;}
   },
   backUp: function(n) {this.pos -= n;},
-  column: function() {return this.start - this.lineStart;},
+  column: function() {return this.start;},
   indentation: function() {return 0;},
   match: function(pattern, consume, caseInsensitive) {
     if (typeof pattern == "string") {
       var cased = function(str) {return caseInsensitive ? str.toLowerCase() : str;};
-      var substr = this.string.substr(this.pos, pattern.length);
-      if (cased(substr) == cased(pattern)) {
+      if (cased(this.string).indexOf(cased(pattern), this.pos) == this.pos) {
         if (consume !== false) this.pos += pattern.length;
         return true;
       }
     } else {
       var match = this.string.slice(this.pos).match(pattern);
-      if (match && match.index > 0) return null;
       if (match && consume !== false) this.pos += match[0].length;
       return match;
     }
   },
-  current: function(){return this.string.slice(this.start, this.pos);},
-  hideFirstChars: function(n, inner) {
-    this.lineStart += n;
-    try { return inner(); }
-    finally { this.lineStart -= n; }
-  }
+  current: function(){return this.string.slice(this.start, this.pos);}
 };
 exports.StringStream = StringStream;
 
@@ -84,35 +74,28 @@ exports.defineMode("null", function() {
 });
 exports.defineMIME("text/plain", "null");
 
-exports.resolveMode = function(spec) {
-  if (typeof spec == "string" && mimeModes.hasOwnProperty(spec)) {
-    spec = mimeModes[spec];
-  } else if (spec && typeof spec.name == "string" && mimeModes.hasOwnProperty(spec.name)) {
-    spec = mimeModes[spec.name];
-  }
-  if (typeof spec == "string") return {name: spec};
-  else return spec || {name: "null"};
-};
 exports.getMode = function(options, spec) {
-  spec = exports.resolveMode(spec);
-  var mfactory = modes[spec.name];
+  if (typeof spec == "string" && mimeModes.hasOwnProperty(spec))
+    spec = mimeModes[spec];
+  if (typeof spec == "string")
+    var mname = spec, config = {};
+  else if (spec != null)
+    var mname = spec.name, config = spec;
+  var mfactory = modes[mname];
   if (!mfactory) throw new Error("Unknown mode: " + spec);
-  return mfactory(options, spec);
+  return mfactory(options, config || {});
 };
-exports.registerHelper = exports.registerGlobalHelper = Math.min;
 
-exports.runMode = function(string, modespec, callback, options) {
+exports.runMode = function(string, modespec, callback) {
   var mode = exports.getMode({indentUnit: 2}, modespec);
-  var lines = splitLines(string), state = (options && options.state) || exports.startState(mode);
+  var lines = splitLines(string), state = exports.startState(mode);
   for (var i = 0, e = lines.length; i < e; ++i) {
     if (i) callback("\n");
     var stream = new exports.StringStream(lines[i]);
     while (!stream.eol()) {
       var style = mode.token(stream, state);
-      callback(stream.current(), style, i, stream.start, state);
+      callback(stream.current(), style, i, stream.start);
       stream.start = stream.pos;
     }
   }
 };
-
-require.cache[require.resolve("../../lib/codemirror")] = require.cache[require.resolve("./runmode.node")];

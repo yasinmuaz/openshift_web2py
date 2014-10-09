@@ -1,12 +1,4 @@
-(function(mod) {
-  if (typeof exports == "object" && typeof module == "object") // CommonJS
-    mod(require("../../lib/codemirror"), require("./runmode"));
-  else if (typeof define == "function" && define.amd) // AMD
-    define(["../../lib/codemirror", "./runmode"], mod);
-  else // Plain browser env
-    mod(CodeMirror);
-})(function(CodeMirror) {
-  "use strict";
+CodeMirror.colorize = (function() {
 
   var isBlock = /^(p|li|div|h\\d|pre|blockquote|td)$/;
 
@@ -18,7 +10,7 @@
     }
   }
 
-  CodeMirror.colorize = function(collection, defaultMode) {
+  return function(collection, defaultMode) {
     if (!collection) collection = document.body.getElementsByTagName("pre");
 
     for (var i = 0; i < collection.length; ++i) {
@@ -34,4 +26,4 @@
       node.className += " cm-s-default";
     }
   };
-});
+})();
