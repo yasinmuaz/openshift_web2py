@@ -5,11 +5,10 @@ License: LGPLv3 (http://www.gnu.org/licenses/lgpl.html)
 """
 import datetime
 import decimal
-from storage import Storage
-from html import TAG, XmlComponent
-from html import xmlescape
-from languages import lazyT
-import contrib.rss2 as rss2
+from gluon.storage import Storage
+from gluon.html import TAG, XmlComponent, xmlescape
+from gluon.languages import lazyT
+import gluon.contrib.rss2 as rss2
 
 try:
     import simplejson as json_parser                # try external module
@@ -17,7 +16,7 @@ except ImportError:
     try:
         import json as json_parser                  # try stdlib (Python >= 2.6)
     except:
-        import contrib.simplejson as json_parser    # fallback to pure-Python module
+        import gluon.contrib.simplejson as json_parser    # fallback to pure-Python module
 
 have_yaml = True
 try:
@@ -47,20 +46,23 @@ def cast_keys(o, cast=str, encoding="utf-8"):
             newobj = dict()
         else:
             newobj = Storage()
-
         for k, v in o.items():
             if (cast == str) and isinstance(k, unicode):
                 key = k.encode(encoding)
             else:
                 key = cast(k)
-            if isinstance(v, (dict, Storage)):
-                value = cast_keys(v, cast=cast, encoding=encoding)
-            else:
-                value = v
-            newobj[key] = value
+            newobj[key] = cast_keys(v, cast=cast, encoding=encoding)
+    elif isinstance(o, (tuple, set, list)):
+        newobj = []
+        for item in o:
+            newobj.append(cast_keys(item, cast=cast, encoding=encoding))
+        if isinstance(o, tuple):
+            newobj = tuple(newobj)
+        elif isinstance(o, set):
+            newobj = set(newobj)
     else:
-        raise TypeError("Cannot cast keys: %s is not supported" % \
-                        type(o))
+        # no string cast (unknown object)
+        newobj = o
     return newobj
 
 def loads_json(o, unicode_keys=True, **kwargs):
@@ -161,15 +163,18 @@ def ics(events, title=None, link=None, timeshift=0, calname=True,
 def rss(feed):
     if not 'entries' in feed and 'items' in feed:
         feed['entries'] = feed['items']
+    def safestr(obj, key, default=''):
+        return str(obj[key]).encode('utf-8', 'replace') if key in obj else default
+
     now = datetime.datetime.now()
-    rss = rss2.RSS2(title=str(feed.get('title', '(notitle)').encode('utf-8', 'replace')),
-                    link=str(feed.get('link', None).encode('utf-8', 'replace')),
-                    description=str(feed.get('description', '').encode('utf-8', 'replace')),
+    rss = rss2.RSS2(title=safestr(feed,'title'),
+                    link=safestr(feed,'link'),
+                    description=safestr(feed,'description'),
                     lastBuildDate=feed.get('created_on', now),
                     items=[rss2.RSSItem(
-                           title=str(entry.get('title', '(notitle)').encode('utf-8', 'replace')),
-                           link=str(entry.get('link', None).encode('utf-8', 'replace')),
-                           description=str(entry.get('description', '').encode('utf-8', 'replace')),
+                           title=safestr(entry,'title','(notitle)'),
+                           link=safestr(entry,'link'),
+                           description=safestr(entry,'description'),
                            pubDate=entry.get('created_on', now)
                            ) for entry in feed.get('entries', [])])
     return rss.to_xml(encoding='utf-8')

@@ -6,12 +6,38 @@
 import sys
 import os
 import unittest
-if os.path.isdir('gluon'):
-    sys.path.append(os.path.realpath('gluon'))
-else:
-    sys.path.append(os.path.realpath('../'))
+
+
+def fix_sys_path():
+    """
+    logic to have always the correct sys.path
+     '', web2py/gluon, web2py/site-packages, web2py/ ...
+    """
+
+    def add_path_first(path):
+        sys.path = [path] + [p for p in sys.path if (
+            not p == path and not p == (path + '/'))]
+
+    path = os.path.dirname(os.path.abspath(__file__))
+
+    if not os.path.isfile(os.path.join(path,'web2py.py')):
+        i = 0
+        while i<10:
+            i += 1
+            if os.path.exists(os.path.join(path,'web2py.py')):
+                break
+            path = os.path.abspath(os.path.join(path, '..'))
+
+    paths = [path,
+             os.path.abspath(os.path.join(path, 'site-packages')),
+             os.path.abspath(os.path.join(path, 'gluon')),
+             '']
+    [add_path_first(path) for path in paths]
+
+fix_sys_path()
 
 from storage import Storage
+import pickle
 
 
 class TestStorage(unittest.TestCase):
@@ -71,6 +97,13 @@ class TestStorage(unittest.TestCase):
         self.assertEquals(s.a, None)
         self.assertEquals(s['a'], None)
         self.assertTrue('a' in s)
+    
+    def test_pickling(self):
+        """ Test storage pickling """
+        s = Storage(a=1)
+        sd = pickle.dumps(s, pickle.HIGHEST_PROTOCOL)
+        news = pickle.loads(sd)
+        self.assertEqual(news.a, 1)
 
 if __name__ == '__main__':
     unittest.main()
