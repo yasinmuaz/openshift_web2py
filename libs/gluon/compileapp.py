@@ -652,7 +652,7 @@ def run_view_in(environment):
     """
     request = current.request
     response = current.response
-    view = environment['response'].view
+    view = response.view
     folder = request.folder
     path = pjoin(folder, 'compiled')
     badv = 'invalid view (%s)' % view
