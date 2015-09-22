@@ -25,7 +25,8 @@ from gluon.restricted import restricted, compile2
 from gluon.fileutils import mktree, listdir, read_file, write_file
 from gluon.myregex import regex_expose, regex_longcomments
 from gluon.languages import translator
-from gluon.dal import BaseAdapter, SQLDB, SQLField, DAL, Field
+from gluon.dal import DAL, Field
+from pydal.base import BaseAdapter
 from gluon.sqlhtml import SQLFORM, SQLTABLE
 from gluon.cache import Cache
 from gluon.globals import current, Response
@@ -126,7 +127,7 @@ class mybuiltin(object):
 def LOAD(c=None, f='index', args=None, vars=None,
          extension=None, target=None, ajax=False, ajax_trap=False,
          url=None, user_signature=False, timeout=None, times=1,
-         content='loading...', **attr):
+         content='loading...', post_vars=Storage(), **attr):
     """  LOADs a component into the action's document
 
     Args:
@@ -201,7 +202,7 @@ def LOAD(c=None, f='index', args=None, vars=None,
         other_request.args = List(args)
         other_request.vars = vars
         other_request.get_vars = vars
-        other_request.post_vars = Storage()
+        other_request.post_vars = post_vars
         other_response = Response()
         other_request.env.path_info = '/' + \
             '/'.join([request.application, c, f] +
@@ -260,7 +261,7 @@ class LoadFactory(object):
         import globals
         target = target or 'c' + str(random.random())[2:]
         attr['_id'] = target
-        request = self.environment['request']
+        request = current.request
         if '.' in f:
             f, extension = f.rsplit('.', 1)
         if url or ajax:
@@ -388,8 +389,8 @@ _base_environment_['HTTP'] = HTTP
 _base_environment_['redirect'] = redirect
 _base_environment_['DAL'] = DAL
 _base_environment_['Field'] = Field
-_base_environment_['SQLDB'] = SQLDB        # for backward compatibility
-_base_environment_['SQLField'] = SQLField  # for backward compatibility
+_base_environment_['SQLDB'] = DAL        # for backward compatibility
+_base_environment_['SQLField'] = Field  # for backward compatibility
 _base_environment_['SQLFORM'] = SQLFORM
 _base_environment_['SQLTABLE'] = SQLTABLE
 _base_environment_['LOAD'] = LOAD
@@ -406,7 +407,7 @@ def build_environment(request, response, session, store_current=True):
     # Enable standard conditional models (i.e., /*.py, /[controller]/*.py, and
     # /[controller]/[function]/*.py)
     response.models_to_run = [
-        r'^\w+\.py$', 
+        r'^\w+\.py$',
         r'^%s/\w+\.py$' % request.controller,
         r'^%s/%s/\w+\.py$' % (request.controller, request.function)
         ]
@@ -513,7 +514,7 @@ def compile_controllers(folder):
         for function in exposed:
             command = data + "\nresponse._vars=response._caller(%s)\n" % \
                 function
-            filename = pjoin(folder, 'compiled', 
+            filename = pjoin(folder, 'compiled',
                              'controllers.%s.%s.py' % (fname[:-3],function))
             write_file(filename, command)
             save_pyc(filename)
@@ -531,10 +532,11 @@ def run_models_in(environment):
     It tries pre-compiled models first before compiling them.
     """
 
-    folder = environment['request'].folder
-    c = environment['request'].controller
+    request = current.request
+    folder = request.folder
+    c = request.controller
     #f = environment['request'].function
-    response = environment['response']
+    response = current.response
 
     path = pjoin(folder, 'models')
     cpath = pjoin(folder, 'compiled')
@@ -576,7 +578,7 @@ def run_controller_in(controller, function, environment):
     """
 
     # if compiled should run compiled!
-    folder = environment['request'].folder
+    folder = current.request.folder
     path = pjoin(folder, 'compiled')
     badc = 'invalid controller (%s/%s)' % (controller, function)
     badf = 'invalid function (%s/%s)' % (controller, function)
@@ -630,7 +632,7 @@ def run_controller_in(controller, function, environment):
             layer = filename + ':' + function
             code = getcfs(layer, filename, lambda: compile2(code, layer))
         restricted(code, environment, filename)
-    response = environment['response']
+    response = current.response
     vars = response._vars
     if response.postprocessing:
         vars = reduce(lambda vars, p: p(vars), response.postprocessing, vars)
@@ -648,9 +650,9 @@ def run_view_in(environment):
     or `view/generic.extension`
     It tries the pre-compiled views_controller_function.pyc before compiling it.
     """
-    request = environment['request']
-    response = environment['response']
-    view = response.view
+    request = current.request
+    response = current.response
+    view = environment['response'].view
     folder = request.folder
     path = pjoin(folder, 'compiled')
     badv = 'invalid view (%s)' % view

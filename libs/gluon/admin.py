@@ -21,6 +21,7 @@ from gluon.fileutils import up, fix_newlines, abspath, recursive_unlink
 from gluon.fileutils import read_file, write_file, parse_version
 from gluon.restricted import RestrictedError
 from gluon.settings import global_settings
+from gluon.cache import CacheOnDisk
 
 
 if not global_settings.web2py_runtime_gae:
@@ -58,6 +59,8 @@ def app_pack(app, request, raise_ex=False, filenames=None):
         w2p_pack(filename, apath(app, request), filenames=filenames)
         return filename
     except Exception, e:
+        import traceback
+        print traceback.format_exc()
         if raise_ex:
             raise
         return False
@@ -113,16 +116,17 @@ def app_cleanup(app, request):
         for f in os.listdir(path):
             try:
                 if f[:1] != '.': recursive_unlink(os.path.join(path, f))
-            except IOError:
+            except (OSError, IOError):
                 r = False
 
     # Remove cache files
-    path = apath('%s/cache/' % app, request)
+    path = apath('%s/cache/' % app, request)    
     if os.path.exists(path):
+        CacheOnDisk(folder=path).clear()
         for f in os.listdir(path):
             try:
-                if f[:1] != '.': os.unlink(os.path.join(path, f))
-            except IOError:
+                if f[:1] != '.': recursive_unlink(os.path.join(path, f))
+            except (OSError, IOError):
                 r = False
     return r
 

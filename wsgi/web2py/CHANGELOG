@@ -1,3 +1,60 @@
+## 2.12.1
+
+- security fix: Validate for open redirect everywhere, not just in login()
+- allow to pack invidual apps and selected files as packed exe files
+- allow bulk user registration with default bulk_register_enabled=False
+- allow unsorted multiword query in grid search
+- better MongoDB support with newer pyDAL
+- enable <app>/appadmin/manage/auth by default for user admin
+- allow mail.settings.server='logging:filename' to log emails to a file
+- better caching logic
+- fixed order of confirm-password field
+- TLS support in ldap
+- prettydate can do UTC
+- jquery 1.11.3
+- bootstrap 3.3.5
+- moved to codecov and enabled appveyor
+- many bug fixes
+
+## 2.11.1
+
+- Many small but significative improvements and bug fixes
+
+## 2.10.1-2.10.2
+
+- welcome app defaults to Bootstrap 3
+- DAL -> pyDAL (thanks Giovanni, Niphlod, Paolo)
+  - new modular dal
+  - fixed problems with GAE support
+  - moved to full NDB support
+  - improved connection pooling logic
+- optional cache.ram.max_ram_utilization = 90 (experimental)
+- improved cache.disk logic (thanks Niphlod and Leonel)
+- lots of pep8 improvements, thanks Richard
+- added support for email attchments when auth.settings.server='gae'
+- fixed app.yaml.example for GAE
+- fixed many small issues
+- many many more tests (thanks Giovanni, Niphlod, Paolo)
+- upgrading static libraries (bootstrap, codemirror, jquery, etc)
+
+## 2.9.12
+
+- Tornado HTTPS support, thanks Diego
+- Modular DAL, thanks Giovanni
+- Added coverage support, thanks Niphlod
+- More tests, thanks Niphlod and Paolo Valleri
+- Added support for show_if in readonly sqlform, thanks Paolo
+- Improved scheduler, thanks Niphlod
+- Email timeout support
+- Made web2py's custom_import work with circular imports, thanks Jack Kuan
+- Added Portuguese, Catalan, and Burmese translations
+- Allow map_hyphen to work for application names, thanks Tim Nyborg
+- New module appconfig.py, thanks Niphlod
+- Added geospatial support to Teradata adaptor, thanks Andrew Willimott 
+- Many bug fixes
+
+
+
 ## 2.9.6 - 2.9.10
 
 - fixed support of GAE + SQL
